@@ -36,7 +36,7 @@
             <button id="undoBtn" class="button small" disabled>Undo</button>
           </div>
         </div>
-        <div id="reviewBanner" class="reviewBanner">Amber rings mark screenshot cells that may need a manual check.</div>
+        <div id="reviewBanner" class="reviewBanner">Screenshot interpretation is on the board. Review amber-marked cells, correct anything needed, then solve.</div>
         <div id="boardWrap" class="boardWrap">
           <canvas id="boardCanvas"></canvas>
         </div>
@@ -94,10 +94,11 @@
       <div id="detectionStatus" class="detectionStatus">Reading screenshot…</div>
       <div class="screenshotFrame"><canvas id="screenshotCanvas"></canvas></div>
       <div class="modalFooter">
-        <div class="modalHint">The parser runs entirely in this page. No screenshot is uploaded anywhere.</div>
+        <div class="modalHint">The screenshot is processed locally. Use & review lets you check the board once. Trust & solve skips the review step.</div>
         <div>
           <button id="closeDetectBtn2" class="button">Cancel</button>
-          <button id="useDetectionBtn" class="button primary" disabled>Use detected board</button>
+          <button id="useDetectionBtn" class="button primary" disabled>Use & review</button>
+          <button id="trustSolveBtn" class="button" disabled>Trust & solve</button>
         </div>
       </div>
     </div>

@@ -18,6 +18,7 @@ const pasteBtn = document.getElementById('pasteBtn');
 const screenshotBtn = document.getElementById('screenshotBtn');
 const editBtn = document.getElementById('editBtn');
 const useDetectionBtn = document.getElementById('useDetectionBtn');
+const trustSolveBtn = document.getElementById('trustSolveBtn');
 const closeDetectBtn = document.getElementById('closeDetectBtn');
 const prevBtn = document.getElementById('prevStepBtn');
 const nextBtn = document.getElementById('nextStepBtn');
@@ -67,14 +68,14 @@ function resizeCanvas() {
 function boardGeometryForView() {
   const rect = boardWrap.getBoundingClientRect();
   const zoom = Number(zoomSlider.value) / 100;
-  // The 91-cell board spans 11*sqrt(3) hex radii horizontally and 17 vertically.
-  // Fit the whole puzzle instead of letting the canvas crop the outer cells.
-  const hexSize = Math.min(rect.width / (11 * Math.sqrt(3)), rect.height / 17) * zoom * 0.96;
+  // The radius-5 pointy-top board occupies 16*sqrt(3) hex radii wide and 17 high.
+  // Fit the complete 91-cell board inside the editor at every window size.
+  const hexSize = Math.min(rect.width / (16 * Math.sqrt(3)), rect.height / 17) * zoom * 0.92;
   return { center: { x: rect.width / 2, y: rect.height / 2 }, hexSize };
 }
 
 function pointForIndex(index, view = state.boardView) {
-  return boardPoint(view, view.hexSize, BOARD.cells[index]);
+  return boardPoint(view.center, view.hexSize, BOARD.cells[index]);
 }
 
 function polygonPoints(p, size) {
@@ -220,6 +221,8 @@ function setCell(index, type) {
   state.solution = null;
   state.solutionIndex = -1;
   state.detectedDetails = null;
+  state.detectedBoard = null;
+  reviewBanner.classList.remove('visible');
   renderAll();
 }
 
@@ -253,6 +256,8 @@ clearBtn.addEventListener('click', () => {
   state.solution = null;
   state.solutionIndex = -1;
   state.detectedDetails = null;
+  state.detectedBoard = null;
+  reviewBanner.classList.remove('visible');
   renderAll();
 });
 
@@ -374,6 +379,12 @@ playBtn.addEventListener('click', async () => {
 });
 
 async function loadScreenshot(file) {
+  // Each screenshot starts a fresh detection transaction. Never leave a prior
+  // successful interpretation armed if the new image fails to parse.
+  state.detectedBoard = null;
+  state.detectedDetails = null;
+  useDetectionBtn.disabled = true;
+  trustSolveBtn.disabled = true;
   const image = await createImageBitmap(file);
   const maxW = 4096;
   const scale = Math.min(1, maxW / image.width);
@@ -400,20 +411,20 @@ async function loadScreenshot(file) {
   state.detectedDetails = Object.fromEntries(detected.details.map((d) => [d.index, d]));
   detectionStatus.innerHTML = `<strong>${detected.summary}</strong><br>Board estimate: ${Math.round(located.center.x)}, ${Math.round(located.center.y)} · cell radius ${Math.round(located.hexSize)} px<br>${detected.ambiguous ? 'Some cells have weaker visual matches. Review the amber-marked cells before solving.' : 'Detection looks clean.'}`;
   useDetectionBtn.disabled = detected.detected === 0;
+  trustSolveBtn.disabled = detected.detected === 0;
   drawDetectionOverlay();
 
-  // Apply a successful detection immediately. The earlier version only populated
-  // the board after the user pressed a second button, which made a successful
-  // screenshot import look like it had detected nothing.
+  // Put the interpretation onto the main board immediately, but keep the
+  // review modal open. The user can either accept it for manual review or
+  // trust it completely and solve without another confirmation step.
   if (detected.detected > 0) {
     pushHistory();
     state.board.set(detected.cells);
     state.solution = null;
     state.solutionIndex = -1;
     state.editing = true;
-    reviewBanner.classList.toggle('visible', Boolean(state.detectedDetails && Object.values(state.detectedDetails).some((d) => d?.confidence < REVIEW_CONFIDENCE && d.type >= 0)));
-    document.getElementById('detectModal').classList.remove('open');
-    setStatus(`${detected.detected} pieces imported from screenshot. Review the board, then solve.`, 'ok');
+    reviewBanner.classList.add('visible');
+    setStatus(`${detected.detected} pieces detected and placed on the board. Review before solving.`, 'ok');
     renderAll();
   }
 }
@@ -459,19 +470,22 @@ pasteBtn.addEventListener('click', async () => {
   }
 });
 
-useDetectionBtn.addEventListener('click', () => {
+function acceptDetectedBoard() {
   if (!state.detectedBoard) return;
-  pushHistory();
-  state.board.set(state.detectedBoard);
-  state.solution = null;
-  state.solutionIndex = -1;
-  state.editing = true;
   document.getElementById('detectModal').classList.remove('open');
-  reviewBanner.classList.toggle('visible', Boolean(state.detectedDetails && Object.values(state.detectedDetails).some((d) => d.confidence < REVIEW_CONFIDENCE && d.type >= 0)));
-  setStatus('Screenshot imported. Review amber-marked cells before solving.', 'ok');
+  state.editing = true;
+  reviewBanner.classList.add('visible');
+  setStatus('Screenshot interpretation accepted. Review the board, then solve.', 'ok');
   renderAll();
+}
+
+useDetectionBtn.addEventListener('click', acceptDetectedBoard);
+trustSolveBtn.addEventListener('click', async () => {
+  if (!state.detectedBoard) return;
+  acceptDetectedBoard();
+  await solveCurrent();
 });
-closeDetectBtn.addEventListener('click', () => document.getElementById('detectModal').classList.remove('open'));
+closeDetectBtn.addEventListener('click', () => { document.getElementById('detectModal').classList.remove('open'); if (state.detectedBoard) { reviewBanner.classList.add('visible'); setStatus('Detection remains on the board. Review it before solving.', 'ok'); renderAll(); } });
 
 canvas.addEventListener('mousemove', (event) => {
   const rect = canvas.getBoundingClientRect();
@@ -495,7 +509,7 @@ window.addEventListener('paste', async (event) => {
 
 buildPalette();
 renderAll();
-setStatus('Ready. Import a screenshot or edit the board manually.');
+setStatus('Ready. The board is blank. Import a screenshot or edit it manually.');
 resizeCanvas();
 
 window.__SIGMAR__ = { state, BOARD, PIECES, solve, validateBoard, locateBoard, classifyBoard, boardPoint };
