@@ -1,0 +1,10 @@
+{
+  "name": "sigmars-garden-solver-enhanced",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/solver.test.mjs",
+    "serve": "python3 -m http.server 8000"
+  }
+}

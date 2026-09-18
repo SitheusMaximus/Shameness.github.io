@@ -1,844 +1,111 @@
-
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sigmar's Garden Solver</title>
+  <meta name="description" content="A local Sigmar's Garden solver with manual board editing and screenshot detection.">
   <link rel="stylesheet" href="styles.css">
-
 </head>
 <body>
-<div id="elementSelector">
-<div class="mainTypePanel"><span class="element zoom"  mainType="0" subType="0" style="background-color: #E0E0E0">5</span><span class="element zoom"  mainType="0" subType="1" style="background-color: #73C2FB">8</span><span class="element zoom"  mainType="0" subType="2" style="background-color: #FC6600">8</span><span class="element zoom"  mainType="0" subType="3" style="background-color: #4F97A3">8</span><span class="element zoom"  mainType="0" subType="4" style="background-color: #4CBB17">8</span></div><div class="mainTypePanel"><span class="element zoom"  mainType="1" subType="0" style="background-color: #E0E0E0">5</span><span class="element zoom"  mainType="1" subType="1" style="background-color: #4682B4">1</span><span class="element zoom"  mainType="1" subType="2" style="background-color: #A9BA9D">1</span><span class="element zoom"  mainType="1" subType="3" style="background-color: #702963">1</span><span class="element zoom"  mainType="1" subType="4" style="background-color: #CA3433">1</span><span class="element zoom"  mainType="1" subType="5" style="background-color: #696980">1</span><span class="element zoom"  mainType="1" subType="6" style="background-color: #F9A602">1</span></div><div class="mainTypePanel"><span class="element zoom"  mainType="2" subType="0" style="background-color: #222021">4</span><span class="element zoom"  mainType="2" subType="1" style="background-color: #FDB9C8">4</span></div>
-</div>
-<svg id="hexMap" viewBox="-1000 -1000 2000 2000" >
-    <defs>
-        <circle id="elementSVG" cx="0" cy="0" r="70" />
-    </defs>
-    <g transform="rotate(0)" fill="#aac09b" stroke="black">
-        <g class="grid">
+  <div class="appShell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">OPUS MAGNUM · SIGMAR'S GARDEN</div>
+        <h1>Board Solver</h1>
+        <p>Screenshot in. Correct the board if needed. Then solve.</p>
+      </div>
+      <div class="topActions">
+        <button id="screenshotBtn" class="button primary">Upload screenshot</button>
+        <button id="pasteBtn" class="button">Paste screenshot</button>
+        <input id="screenshotInput" type="file" accept="image/*" hidden>
+      </div>
+    </header>
 
-    <g transform="translate(0,0)" hex_x="0" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(173.0,0.0)" hex_x="2" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(86.50000000000001,-149.82239485470788)" hex_x="1" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-86.49999999999996,-149.8223948547079)" hex_x="-1" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-173.0,2.118638962524921e-14)" hex_x="-2" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-86.49999999999996,149.8223948547079)" hex_x="-1" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(86.50000000000001,149.82239485470788)" hex_x="1" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(346.0,0.0)" hex_x="4" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(259.50000000000006,-149.8223948547079)" hex_x="3" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(173.00000000000003,-299.64478970941576)" hex_x="2" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(3.8413716652030416e-14,-299.6447897094157)" hex_x="0" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-172.99999999999991,-299.6447897094158)" hex_x="-2" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-259.4999999999999,-149.8223948547079)" hex_x="-3" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-346.0,4.237277925049842e-14)" hex_x="-4" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-259.5,149.8223948547079)" hex_x="-3" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-172.99999999999991,299.6447897094158)" hex_x="-2" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(7.682743330406083e-14,299.6447897094158)" hex_x="0" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(173.00000000000003,299.64478970941576)" hex_x="2" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(259.50000000000006,149.82239485470788)" hex_x="3" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(519.0,0.0)" hex_x="6" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(432.5,-149.8223948547079)" hex_x="5" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(346.0,-299.6447897094158)" hex_x="4" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(259.50000000000006,-449.46718456412367)" hex_x="3" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(86.50000000000007,-449.46718456412367)" hex_x="1" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-86.49999999999993,-449.46718456412367)" hex_x="-1" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-259.4999999999999,-449.4671845641237)" hex_x="-3" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-345.99999999999983,-299.6447897094158)" hex_x="-4" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-432.49999999999983,-149.8223948547079)" hex_x="-5" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-519.0,6.355916887574763e-14)" hex_x="-6" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-432.5,149.82239485470794)" hex_x="-5" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-346.0,299.6447897094158)" hex_x="-4" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-259.4999999999999,449.4671845641237)" hex_x="-3" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-86.49999999999989,449.4671845641237)" hex_x="-1" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(86.50000000000011,449.4671845641237)" hex_x="1" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(259.50000000000006,449.46718456412367)" hex_x="3" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(346.00000000000006,299.6447897094158)" hex_x="4" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(432.50000000000006,149.8223948547079)" hex_x="5" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(692.0,0.0)" hex_x="8" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(605.5,-149.8223948547079)" hex_x="7" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(519.0,-299.6447897094158)" hex_x="6" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(432.5,-449.4671845641237)" hex_x="5" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(346.00000000000006,-599.2895794188315)" hex_x="4" hex_y="4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(173.00000000000009,-599.2895794188315)" hex_x="2" hex_y="4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(7.682743330406083e-14,-599.2895794188315)" hex_x="0" hex_y="4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-172.99999999999991,-599.2895794188315)" hex_x="-2" hex_y="4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-345.99999999999983,-599.2895794188316)" hex_x="-4" hex_y="4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-432.49999999999983,-449.4671845641237)" hex_x="-5" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-518.9999999999999,-299.6447897094158)" hex_x="-6" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-605.4999999999999,-149.8223948547079)" hex_x="-7" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-692.0,8.474555850099684e-14)" hex_x="-8" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-605.5,149.82239485470797)" hex_x="-7" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-519.0,299.6447897094158)" hex_x="-6" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-432.5,449.46718456412367)" hex_x="-5" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-345.99999999999983,599.2895794188316)" hex_x="-4" hex_y="-4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-172.99999999999986,599.2895794188316)" hex_x="-2" hex_y="-4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(1.5365486660812167e-13,599.2895794188316)" hex_x="0" hex_y="-4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(173.00000000000014,599.2895794188316)" hex_x="2" hex_y="-4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(346.00000000000006,599.2895794188315)" hex_x="4" hex_y="-4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(432.50000000000006,449.46718456412367)" hex_x="5" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(519.0000000000001,299.6447897094158)" hex_x="6" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(605.5000000000001,149.8223948547079)" hex_x="7" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(865.0,0.0)" hex_x="10" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(778.5,-149.8223948547079)" hex_x="9" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(692.0,-299.6447897094158)" hex_x="8" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(605.5,-449.4671845641237)" hex_x="7" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(519.0,-599.2895794188316)" hex_x="6" hex_y="4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(432.50000000000006,-749.1119742735393)" hex_x="5" hex_y="5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(259.50000000000006,-749.1119742735393)" hex_x="3" hex_y="5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(86.50000000000007,-749.1119742735393)" hex_x="1" hex_y="5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-86.49999999999993,-749.1119742735393)" hex_x="-1" hex_y="5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-259.49999999999994,-749.1119742735393)" hex_x="-3" hex_y="5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-432.49999999999983,-749.1119742735397)" hex_x="-5" hex_y="5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-518.9999999999999,-599.2895794188317)" hex_x="-6" hex_y="4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-605.4999999999999,-449.46718456412384)" hex_x="-7" hex_y="3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-691.9999999999999,-299.64478970941593)" hex_x="-8" hex_y="2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-778.4999999999999,-149.822394854708)" hex_x="-9" hex_y="1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-865.0,1.0593194812624605e-13)" hex_x="-10" hex_y="0">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-778.5,149.822394854708)" hex_x="-9" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-692.0,299.6447897094159)" hex_x="-8" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-605.5,449.4671845641237)" hex_x="-7" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-519.0,599.2895794188316)" hex_x="-6" hex_y="-4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-432.49999999999983,749.1119742735397)" hex_x="-5" hex_y="-5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-259.49999999999983,749.1119742735397)" hex_x="-3" hex_y="-5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(-86.49999999999984,749.1119742735397)" hex_x="-1" hex_y="-5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(86.50000000000016,749.1119742735397)" hex_x="1" hex_y="-5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(259.50000000000017,749.1119742735397)" hex_x="3" hex_y="-5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(432.50000000000006,749.1119742735393)" hex_x="5" hex_y="-5">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(519.0000000000001,599.2895794188315)" hex_x="6" hex_y="-4">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(605.5000000000001,449.46718456412367)" hex_x="7" hex_y="-3">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(692.0000000000001,299.6447897094158)" hex_x="8" hex_y="-2">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-    <g transform="translate(778.5000000000001,149.8223948547079)" hex_x="9" hex_y="-1">
-        <g class="">
-            <polygon points="0,100 -87,50 -87,-50 -0,-100 87,-50 87,50"></polygon>
-        </g>
-        <g class"" transform="translate(2000,0)">
-            <use xlink:href="#elementSVG"> </use>
-        </g>
-    </g>
-    
-        </g>
-    </g>
+    <main class="workspace">
+      <section class="boardCard">
+        <div class="cardHeader">
+          <div>
+            <span class="sectionKicker">BOARD</span>
+            <h2>Current position</h2>
+          </div>
+          <div class="viewControls">
+            <label>Zoom <input id="zoomSlider" type="range" min="80" max="125" value="100"></label>
+            <button id="editBtn" class="button small">Edit board</button>
+            <button id="clearBtn" class="button small">Clear</button>
+            <button id="undoBtn" class="button small" disabled>Undo</button>
+          </div>
+        </div>
+        <div id="reviewBanner" class="reviewBanner">Amber rings mark screenshot cells that may need a manual check.</div>
+        <div id="boardWrap" class="boardWrap">
+          <canvas id="boardCanvas"></canvas>
+        </div>
+        <div class="boardFooter">
+          <div>
+            <div id="countLine">0 / 91 board cells occupied</div>
+            <div id="pieceCounts" class="pieceCounts"></div>
+          </div>
+          <button id="solveBtn" class="button primary solveButton" disabled>Solve board</button>
+        </div>
+      </section>
 
-</svg>
+      <aside class="sidePanel">
+        <section class="panelCard">
+          <div class="sectionKicker">MANUAL EDIT</div>
+          <h2>Choose a marble</h2>
+          <p class="muted">Click a hex to place it. Click the same marble again to remove it.</p>
+          <div id="palette" class="palette"></div>
+        </section>
+
+        <section class="panelCard solutionCard">
+          <div class="sectionKicker">SOLUTION</div>
+          <div class="solutionHead">
+            <h2>Move sequence</h2>
+            <span id="stepLabel">No solution loaded</span>
+          </div>
+          <div id="solutionSteps" class="solutionSteps"><div class="emptyState">Solve a board to see the move list.</div></div>
+          <div class="solutionControls">
+            <button id="prevStepBtn" class="button small" disabled>Previous</button>
+            <button id="playBtn" class="button small" disabled>Play solution</button>
+            <button id="nextStepBtn" class="button small" disabled>Next</button>
+          </div>
+        </section>
+
+        <section class="statusCard">
+          <span class="statusDot"></span>
+          <div>
+            <div class="sectionKicker">STATUS</div>
+            <div id="statusLine">Ready.</div>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div id="detectModal" class="modalBackdrop">
+    <div class="modal">
+      <div class="modalHeader">
+        <div>
+          <div class="sectionKicker">SCREENSHOT IMPORT</div>
+          <h2>Board detection</h2>
+        </div>
+        <button id="closeDetectBtn" class="iconButton" aria-label="Close">×</button>
+      </div>
+      <div id="detectionStatus" class="detectionStatus">Reading screenshot…</div>
+      <div class="screenshotFrame"><canvas id="screenshotCanvas"></canvas></div>
+      <div class="modalFooter">
+        <div class="modalHint">The parser runs entirely in this page. No screenshot is uploaded anywhere.</div>
+        <div>
+          <button id="closeDetectBtn2" class="button">Cancel</button>
+          <button id="useDetectionBtn" class="button primary" disabled>Use detected board</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('closeDetectBtn2').addEventListener('click', () => document.getElementById('detectModal').classList.remove('open'));
+  </script>
+  <script type="module" src="app.js"></script>
 </body>
-<script src="scripts.js"></script>
 </html>
