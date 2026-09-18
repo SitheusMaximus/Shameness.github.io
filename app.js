@@ -27,6 +27,7 @@ const pieceCounts = document.getElementById('pieceCounts');
 const palette = document.getElementById('palette');
 const zoomSlider = document.getElementById('zoomSlider');
 const reviewBanner = document.getElementById('reviewBanner');
+const REVIEW_CONFIDENCE = 0.48;
 
 const state = {
   board: new Int8Array(CELL_COUNT),
@@ -54,10 +55,11 @@ function setStatus(text, tone = '') {
 function resizeCanvas() {
   const rect = boardWrap.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssHeight = Math.max(1, rect.height);
   canvas.width = Math.floor(rect.width * dpr);
-  canvas.height = Math.floor(Math.max(520, rect.height) * dpr);
+  canvas.height = Math.floor(cssHeight * dpr);
   canvas.style.width = `${rect.width}px`;
-  canvas.style.height = `${Math.max(520, rect.height)}px`;
+  canvas.style.height = `${cssHeight}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawBoard();
 }
@@ -65,8 +67,10 @@ function resizeCanvas() {
 function boardGeometryForView() {
   const rect = boardWrap.getBoundingClientRect();
   const zoom = Number(zoomSlider.value) / 100;
-  const hexSize = Math.min(rect.width / 15.5, rect.height / 12.5) * zoom;
-  return { center: { x: rect.width / 2, y: rect.height / 2 + 5 }, hexSize };
+  // The 91-cell board spans 11*sqrt(3) hex radii horizontally and 17 vertically.
+  // Fit the whole puzzle instead of letting the canvas crop the outer cells.
+  const hexSize = Math.min(rect.width / (11 * Math.sqrt(3)), rect.height / 17) * zoom * 0.96;
+  return { center: { x: rect.width / 2, y: rect.height / 2 }, hexSize };
 }
 
 function pointForIndex(index, view = state.boardView) {
@@ -82,14 +86,6 @@ function polygonPoints(p, size) {
   return pts;
 }
 
-function hexPath(p, size, inset = 0) {
-  const pts = polygonPoints(p, size - inset);
-  const path = new Path2D();
-  path.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) path.lineTo(pts[i][0], pts[i][1]);
-  path.closePath();
-  return path;
-}
 
 function hexClickIndex(x, y) {
   let best = { index: -1, d: Infinity };
@@ -118,15 +114,18 @@ function drawBoard() {
   for (const cell of BOARD.cells) {
     const p = pointForIndex(cell.index);
     const occupied = state.board[cell.index] >= 0;
-    const path = hexPath(p, state.boardView.hexSize, 3);
+    const pts = polygonPoints(p, state.boardView.hexSize - 2.5);
     ctx.beginPath();
-    ctx.fillStyle = occupied ? '#c5b895' : '#776f60';
-    ctx.globalAlpha = occupied ? 1 : 0.23;
-    ctx.fill(path);
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = occupied ? '#c5b895' : '#4d535d';
+    ctx.globalAlpha = occupied ? 1 : 0.38;
+    ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = freeMask[cell.index] ? '#d7c99d' : '#655f54';
-    ctx.lineWidth = freeMask[cell.index] ? 2.4 : 1.4;
-    ctx.stroke(path);
+    ctx.strokeStyle = freeMask[cell.index] ? '#ddd2b1' : '#777066';
+    ctx.lineWidth = freeMask[cell.index] ? 2.2 : 1.1;
+    ctx.stroke();
 
     if (occupied) {
       const type = state.board[cell.index];
@@ -152,7 +151,7 @@ function drawBoard() {
 
     if (state.detectedDetails) {
       const detail = state.detectedDetails[cell.index];
-      if (detail?.confidence !== undefined && detail.confidence < 0.55 && detail.type >= 0) {
+      if (detail?.confidence !== undefined && detail.confidence < REVIEW_CONFIDENCE && detail.type >= 0) {
         ctx.beginPath();
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 3;
@@ -376,7 +375,7 @@ playBtn.addEventListener('click', async () => {
 
 async function loadScreenshot(file) {
   const image = await createImageBitmap(file);
-  const maxW = 1800;
+  const maxW = 4096;
   const scale = Math.min(1, maxW / image.width);
   screenshotCanvas.width = Math.round(image.width * scale);
   screenshotCanvas.height = Math.round(image.height * scale);
@@ -399,9 +398,24 @@ async function loadScreenshot(file) {
   state.located = located;
   state.detectedBoard = detected.cells;
   state.detectedDetails = Object.fromEntries(detected.details.map((d) => [d.index, d]));
-  detectionStatus.innerHTML = `<strong>${detected.summary}</strong><br>Board estimate: ${Math.round(located.center.x)}, ${Math.round(located.center.y)} · cell radius ${Math.round(located.hexSize)} px<br>${detected.ambiguous ? 'Pale marbles are provisionally split between Salt and Mercury. Review any amber-marked cells before solving.' : 'Detection looks clean.'}`;
+  detectionStatus.innerHTML = `<strong>${detected.summary}</strong><br>Board estimate: ${Math.round(located.center.x)}, ${Math.round(located.center.y)} · cell radius ${Math.round(located.hexSize)} px<br>${detected.ambiguous ? 'Some cells have weaker visual matches. Review the amber-marked cells before solving.' : 'Detection looks clean.'}`;
   useDetectionBtn.disabled = detected.detected === 0;
   drawDetectionOverlay();
+
+  // Apply a successful detection immediately. The earlier version only populated
+  // the board after the user pressed a second button, which made a successful
+  // screenshot import look like it had detected nothing.
+  if (detected.detected > 0) {
+    pushHistory();
+    state.board.set(detected.cells);
+    state.solution = null;
+    state.solutionIndex = -1;
+    state.editing = true;
+    reviewBanner.classList.toggle('visible', Boolean(state.detectedDetails && Object.values(state.detectedDetails).some((d) => d?.confidence < REVIEW_CONFIDENCE && d.type >= 0)));
+    document.getElementById('detectModal').classList.remove('open');
+    setStatus(`${detected.detected} pieces imported from screenshot. Review the board, then solve.`, 'ok');
+    renderAll();
+  }
 }
 
 function drawDetectionOverlay() {
@@ -417,7 +431,7 @@ function drawDetectionOverlay() {
     const detail = state.detectedDetails[cell.index];
     screenshotCtx.beginPath();
     screenshotCtx.arc(p.x, p.y, Math.max(3, state.located.hexSize * 0.12), 0, Math.PI * 2);
-    screenshotCtx.strokeStyle = detail?.confidence < 0.55 ? '#f59e0b' : '#5eead4';
+    screenshotCtx.strokeStyle = detail?.confidence < REVIEW_CONFIDENCE ? '#f59e0b' : '#5eead4';
     screenshotCtx.stroke();
   }
   screenshotCtx.restore();
@@ -453,7 +467,7 @@ useDetectionBtn.addEventListener('click', () => {
   state.solutionIndex = -1;
   state.editing = true;
   document.getElementById('detectModal').classList.remove('open');
-  reviewBanner.classList.toggle('visible', Boolean(state.detectedDetails && Object.values(state.detectedDetails).some((d) => d.confidence < 0.55 && d.type >= 0)));
+  reviewBanner.classList.toggle('visible', Boolean(state.detectedDetails && Object.values(state.detectedDetails).some((d) => d.confidence < REVIEW_CONFIDENCE && d.type >= 0)));
   setStatus('Screenshot imported. Review amber-marked cells before solving.', 'ok');
   renderAll();
 });
