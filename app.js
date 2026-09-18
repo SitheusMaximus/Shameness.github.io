@@ -1,5 +1,6 @@
 import { BOARD, CELL_COUNT, PIECES, PIECE_INFO, ELEMENTS, solve, validateBoard, computeFreeMask } from './solver.js';
 import { locateBoard, classifyBoard, boardPoint } from './detector.js';
+import { GAME_ICONS } from './game-icons.js';
 
 const canvas = document.getElementById('boardCanvas');
 const ctx = canvas.getContext('2d');
@@ -47,6 +48,17 @@ const state = {
 state.board.fill(-1);
 
 const PIECE_IDS = [PIECES.AIR, PIECES.WATER, PIECES.FIRE, PIECES.EARTH, PIECES.SALT, PIECES.MERCURY, PIECES.LEAD, PIECES.TIN, PIECES.IRON, PIECES.COPPER, PIECES.SILVER, PIECES.GOLD, PIECES.MORS, PIECES.VITAE];
+const GAME_ICON_IMAGES = new Map();
+if (typeof Image !== 'undefined') {
+  for (const type of PIECE_IDS) {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = GAME_ICONS[type];
+    image.addEventListener('load', () => drawBoard());
+    GAME_ICON_IMAGES.set(type, image);
+  }
+}
+
 
 function setStatus(text, tone = '') {
   statusLine.textContent = text;
@@ -131,23 +143,29 @@ function drawBoard() {
     if (occupied) {
       const type = state.board[cell.index];
       const info = PIECE_INFO[type];
+      const icon = GAME_ICON_IMAGES.get(type);
       const r = state.boardView.hexSize * 0.56;
-      const gradient = ctx.createRadialGradient(p.x - r * 0.25, p.y - r * 0.3, r * 0.15, p.x, p.y, r);
-      gradient.addColorStop(0, lighten(info.color, 0.25));
-      gradient.addColorStop(1, info.color);
-      ctx.beginPath();
-      ctx.fillStyle = gradient;
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fill();
+      const diameter = r * 2;
+      if (icon?.complete && icon.naturalWidth > 0) {
+        ctx.drawImage(icon, p.x - r, p.y - r, diameter, diameter);
+      } else {
+        ctx.beginPath();
+        ctx.fillStyle = info.color;
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = `700 ${Math.max(10, state.boardView.hexSize * 0.25)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(info.short, p.x, p.y + 1);
+      }
+
       ctx.strokeStyle = freeMask[cell.index] ? '#fff7d2' : '#4c453b';
-      ctx.lineWidth = solutionMove && (solutionMove.a === cell.index || solutionMove.b === cell.index) ? 4.5 : 2;
+      ctx.lineWidth = solutionMove && (solutionMove.a === cell.index || solutionMove.b === cell.index) ? 4.5 : 1.6;
       if (solutionMove && (solutionMove.a === cell.index || solutionMove.b === cell.index)) ctx.strokeStyle = '#f4c95d';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 0.5, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = luminance(info.color) > 155 ? '#2a241c' : '#f8f3e7';
-      ctx.font = `600 ${Math.max(10, state.boardView.hexSize * 0.25)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(info.short, p.x, p.y + 1);
     }
 
     if (state.detectedDetails) {
@@ -188,7 +206,7 @@ function buildPalette() {
     button.className = 'pieceButton';
     button.dataset.type = String(type);
     button.title = info.name;
-    button.innerHTML = `<span class="pieceSwatch" style="--piece:${info.color}">${info.short}</span><span>${info.name}</span>`;
+    button.innerHTML = `<img class="pieceGameIcon" src="${GAME_ICONS[type]}" alt="" aria-hidden="true"><span>${info.name}</span>`;
     button.addEventListener('click', () => {
       state.selectedPiece = type;
       document.querySelectorAll('.pieceButton').forEach((b) => b.classList.toggle('selected', b === button));
@@ -205,7 +223,7 @@ function updateCounts() {
   countLine.textContent = `${occupied} / ${CELL_COUNT} board cells occupied`;
   pieceCounts.innerHTML = PIECE_IDS.map((type) => {
     const info = PIECE_INFO[type];
-    return `<span class="countChip"><i style="background:${info.color}"></i>${info.name} ${counts[type]}</span>`;
+    return `<span class="countChip"><img src="${GAME_ICONS[type]}" alt="" aria-hidden="true">${info.name} ${counts[type]}</span>`;
   }).join('');
 }
 
@@ -338,7 +356,11 @@ function updateStepUI() {
     const b = step.b >= 0 ? BOARD.cells[step.b] : null;
     const aName = PIECE_INFO[state.board[step.a]]?.name || 'Marble';
     const bName = b ? (PIECE_INFO[state.board[step.b]]?.name || 'Marble') : '';
-    return `<button class="solutionRow ${i === index ? 'active' : ''}" data-index="${i}"><span>${String(i + 1).padStart(2, '0')}</span><strong>${aName}${bName ? ` + ${bName}` : ' →'}</strong><em>${formatCoord(a)}${b ? ` · ${formatCoord(b)}` : ''}</em></button>`;
+    const aType = state.board[step.a];
+    const bType = b ? state.board[step.b] : -1;
+    const aIcon = GAME_ICONS[aType];
+    const bIcon = b ? GAME_ICONS[bType] : '';
+    return `<button class="solutionRow ${i === index ? 'active' : ''}" data-index="${i}"><span>${String(i + 1).padStart(2, '0')}</span><strong><img src="${aIcon}" alt="" aria-hidden="true"><b>${aName}</b>${b ? `<span class="solutionPlus">+</span><img src="${bIcon}" alt="" aria-hidden="true"><b>${bName}</b>` : ''}</strong><em>${formatCoord(a)}${b ? ` · ${formatCoord(b)}` : ''}</em></button>`;
   }).join('');
   solutionSteps.querySelectorAll('.solutionRow').forEach((row) => row.addEventListener('click', () => {
     state.solutionIndex = Number(row.dataset.index);
