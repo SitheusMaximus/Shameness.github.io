@@ -835,9 +835,12 @@ function classifyByColor(feature, clearMode = false) {
 
 function hsvMeanScore(feature, type, clearMode = false) {
   const means = clearMode ? CLEAR_COLOR_MEANS : ICON_COLOR_MEANS;
-  const target = means[type];
-  const meanHsv = feature.meanHsv || [0, 0, 0];
-  if (!Array.isArray(target) || target.length < 3) return 0;
+  const target = Array.isArray(means) ? means[type] : null;
+  const meanHsv = Array.isArray(feature?.meanHsv) ? feature.meanHsv : [0, 0, 0];
+  if (!Array.isArray(target) || target.length < 3 ||
+      !Number.isFinite(target[0]) || !Number.isFinite(target[1]) || !Number.isFinite(target[2])) {
+    return 0;
+  }
   const dh = Math.min(Math.abs(meanHsv[0] - target[0]), 180 - Math.abs(meanHsv[0] - target[0])) / 90;
   const ds = Math.abs(meanHsv[1] - target[1]) / 255;
   const dv = Math.abs(meanHsv[2] - target[2]) / 255;
