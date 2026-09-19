@@ -978,34 +978,6 @@ function classifyBoard(imageData, located, onProgress = null) {
       const colour = 0.55 * colorByType[type] + 0.45 * meanByType[type];
       return 0.58 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.22 * colour;
     });
-    if (!clearMode) {
-      // Faded captures lose much of the glyph contrast. For the pairs that
-      // are visually closest in the faded state, use the marble's colour
-      // signature as a tie-breaker rather than allowing a generic glyph
-      // correlation to win by a tiny margin.
-      const colourPairs = [
-        ['Salt', 'Air'],
-        ['Vitae', 'Mercury'],
-        ['Copper', 'Salt'],
-        ['Water', 'Earth'],
-        ['Mercury', 'Copper'],
-      ];
-      const topTwo = new Set([ranked[0]?.index, ranked[1]?.index]);
-      for (const [leftName, rightName] of colourPairs) {
-        const left = TYPE_NAMES.indexOf(leftName);
-        const right = TYPE_NAMES.indexOf(rightName);
-        if (!topTwo.has(left) || !topTwo.has(right)) continue;
-        const glyphGap = Math.abs(glyphScores[left] - glyphScores[right]);
-        if (glyphGap > 0.075) continue;
-        const colourDelta =
-          0.65 * (meanByType[left] - meanByType[right]) +
-          0.35 * (colorByType[left] - colorByType[right]);
-        const tieBreak = clamp(colourDelta * 0.12, -0.055, 0.055);
-        combined[left] += tieBreak;
-        combined[right] -= tieBreak;
-      }
-    }
-
     if (!clearMode && located.hexSize >= 34) {
       const waterIndex = TYPE_NAMES.indexOf('Water');
       const earthIndex = TYPE_NAMES.indexOf('Earth');
@@ -1043,6 +1015,34 @@ function classifyBoard(imageData, located, onProgress = null) {
       }
       prototypeFeature = bestVariant?.feature ?? null;
     }
+    if (!clearMode) {
+      // Faded captures lose much of the glyph contrast. For the pairs that
+      // are visually closest in the faded state, use the marble's colour
+      // signature as a tie-breaker rather than allowing a generic glyph
+      // correlation to win by a tiny margin.
+      const colourPairs = [
+        ['Salt', 'Air'],
+        ['Vitae', 'Mercury'],
+        ['Copper', 'Salt'],
+        ['Water', 'Earth'],
+        ['Mercury', 'Copper'],
+      ];
+      const topTwo = new Set([ranked[0]?.index, ranked[1]?.index]);
+      for (const [leftName, rightName] of colourPairs) {
+        const left = TYPE_NAMES.indexOf(leftName);
+        const right = TYPE_NAMES.indexOf(rightName);
+        if (!topTwo.has(left) || !topTwo.has(right)) continue;
+        const glyphGap = Math.abs(glyphScores[left] - glyphScores[right]);
+        if (glyphGap > 0.075) continue;
+        const colourDelta =
+          0.65 * (meanByType[left] - meanByType[right]) +
+          0.35 * (colorByType[left] - colorByType[right]);
+        const tieBreak = clamp(colourDelta * 0.12, -0.055, 0.055);
+        combined[left] += tieBreak;
+        combined[right] -= tieBreak;
+      }
+    }
+
     const topColor = colorRanked[0]?.score ?? 0;
     // Occupancy must be independent from the type score. A faint marble can
     // be a poor colour/type match while still being an excellent icon match.
