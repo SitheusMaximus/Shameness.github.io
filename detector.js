@@ -640,17 +640,10 @@ function assignToInventory(scored) {
     const name = TYPE_NAMES[item.rawBestType];
     if (name) rawCounts[name] += 1;
   }
-  const legalRaw = TYPE_NAMES.every((name) => rawCounts[name] <= maxCounts[name]);
-  if (legalRaw) {
-    return scored.map((item) => ({
-      ...item,
-      typeName: TYPE_NAMES[item.rawBestType],
-      type: TYPE_IDS[TYPE_NAMES[item.rawBestType]],
-      assignedScore: item.rawBestScore,
-      inventoryAdjusted: false,
-    }));
-  }
-
+  // A fresh Sigmar's Garden board has an exact inventory. Do not accept
+  // a visually plausible but legal count distribution, because that lets
+  // low-contrast empty cells steal a slot from a real marble. When the
+  // standard 55-piece inventory is present, solve the full assignment.
   const slots = [];
   for (const name of TYPE_NAMES) for (let i = 0; i < TEMPLATE_COUNTS[name]; i++) slots.push(name);
   const indexByName = Object.fromEntries(TYPE_NAMES.map((name, i) => [name, i]));
@@ -830,9 +823,14 @@ function classifyBoard(imageData, located) {
     for (const entry of colorRanked) colorByType[entry.type] = entry.score;
     const meanByType = TYPE_NAMES.map((_, type) => hsvMeanScore(color, type, clearMode));
 
-    const combined = TYPE_NAMES.map((_, type) => clearMode
-      ? (0.48 * colorByType[type] + 0.52 * meanByType[type])
-      : glyphScores[type]);
+    const combined = TYPE_NAMES.map((_, type) => {
+      if (clearMode) return 0.48 * colorByType[type] + 0.52 * meanByType[type];
+      // Faded marbles retain useful hue information even when the glyph is
+      // low-contrast. Keep glyph shape dominant, but let the local colour
+      // signature break ties and reject beige empty-cell lookalikes.
+      const colour = 0.60 * colorByType[type] + 0.40 * meanByType[type];
+      return 0.72 * glyphScores[type] + 0.28 * colour;
+    });
     if (!clearMode && located.hexSize >= 34) {
       const waterIndex = TYPE_NAMES.indexOf('Water');
       const earthIndex = TYPE_NAMES.indexOf('Earth');
@@ -916,7 +914,7 @@ function classifyBoard(imageData, located) {
   if (occupied.length > STANDARD_TOTAL) { occupied.sort((a, b) => b.templateScore - a.templateScore); occupied = occupied.slice(0, STANDARD_TOTAL); }
   const assigned = clearMode
     ? occupied.map((item) => ({ ...item, typeName: TYPE_NAMES[item.rawBestType], type: TYPE_IDS[TYPE_NAMES[item.rawBestType]], assignedScore: item.rawBestScore, inventoryAdjusted: false }))
-    : assignToInventory(occupied);
+    : (occupied.length === STANDARD_TOTAL ? assignToInventory(occupied) : assignToInventory(occupied));
   const cells = new Int8Array(CELL_COUNT); cells.fill(-1);
   const details = Array.from({ length: CELL_COUNT }, () => null);
   const occupiedSet = new Set(occupied.map((item) => item.index));
