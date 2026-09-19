@@ -599,7 +599,7 @@ function drawDetectionOverlay() {
   screenshotCtx.lineWidth = 2;
   for (const cell of BOARD.cells) {
     const p = boardPoint(state.located.center, state.located.hexSize, cell);
-    const detail = state.detectedDetails[cell.index];
+    const detail = state.detectedDetails?.[cell.index];
     screenshotCtx.beginPath();
     screenshotCtx.arc(p.x, p.y, Math.max(3, state.located.hexSize * 0.12), 0, Math.PI * 2);
     screenshotCtx.strokeStyle = detail?.needsReview ? '#f59e0b' : '#5eead4';
