@@ -57,6 +57,8 @@ h2 { font-size: 17px; line-height: 1.2; margin-top: 5px; }
 .solutionRow { width: 100%; display: grid; grid-template-columns: 30px minmax(0,1fr) auto; gap: 6px; align-items: center; border: 0; background: transparent; color: var(--text); padding: 7px 8px; border-radius: 7px; cursor: pointer; text-align: left; }
 .solutionRow:hover { background: #141a21; }
 .solutionRow.active { background: #211f18; outline: 1px solid rgba(244,201,93,.3); }
+.solutionRow.completed { opacity: .52; }
+.solutionRow.completed strong { text-decoration: line-through; text-decoration-color: #6d6b62; }
 .solutionRow span { color: #7e8790; font-family: ui-monospace, monospace; font-size: 10px; }
 .solutionRow strong { font-size: 11px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .solutionRow em { color: #77808a; font-size: 9px; font-style: normal; font-family: ui-monospace, monospace; }
