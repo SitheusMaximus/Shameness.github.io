@@ -1,5 +1,5 @@
 import { BOARD, CELL_COUNT, PIECES, PIECE_INFO } from './solver.js';
-import { FEATURE_SIZE, FEATURE_SCALE, TEMPLATE_COUNTS, GLYPH_TEMPLATES, TYPE_NAMES, ICON_COLOR_HISTS, ICON_COLOR_MEANS, CLEAR_COLOR_HISTS, CLEAR_COLOR_MEANS, CLEAR_GLYPH_TEMPLATES } from './recognition-data.js';
+import { FEATURE_SIZE, FEATURE_SCALE, TEMPLATE_COUNTS, GLYPH_TEMPLATES, TYPE_NAMES, ICON_COLOR_HISTS, ICON_COLOR_MEANS, CLEAR_COLOR_HISTS, CLEAR_COLOR_MEANS, CLEAR_GLYPH_TEMPLATES, CAPTURE_GLYPH_TEMPLATES } from './recognition-data.js';
 
 const TYPE_IDS = Object.freeze({
   Salt: PIECES.SALT,
@@ -26,6 +26,9 @@ const FEATURE_MASK = makeFeatureMask(FEATURE_SIZE);
 const GAUSSIAN_KERNEL = makeGaussianKernel(1.7, 5);
 const TEMPLATE_FEATURES = Object.freeze(Object.fromEntries(
   TYPE_NAMES.map((name) => [name, GLYPH_TEMPLATES[name].map((encoded) => decodeBase64(encoded, Int8Array))]),
+));
+const CAPTURE_TEMPLATE_FEATURES = Object.freeze(Object.fromEntries(
+  TYPE_NAMES.map((name) => [name, (CAPTURE_GLYPH_TEMPLATES[name] || []).map((encoded) => decodeBase64(encoded, Int8Array))]),
 ));
 const CLEAR_GLYPH_FEATURES = Object.freeze(Object.fromEntries(Object.entries(CLEAR_GLYPH_TEMPLATES).map(([name, templates]) => [name, templates.map((encoded) => decodeBase64(encoded, Int8Array))])));
 
@@ -250,11 +253,14 @@ function signedShapeSimilarity(a, b) {
 
 function bestTemplateScore(feature, name) {
   let best = -Infinity;
-  for (const template of TEMPLATE_FEATURES[name]) {
-    const c = cosine(feature, template);
-    const s = signedShapeSimilarity(feature, template);
-    const score = 0.55 * c + 0.45 * ((s + 1) / 2);
-    best = Math.max(best, score);
+  const banks = [TEMPLATE_FEATURES[name] || [], CAPTURE_TEMPLATE_FEATURES[name] || []];
+  for (const bank of banks) {
+    for (const template of bank) {
+      const c = cosine(feature, template);
+      const s = signedShapeSimilarity(feature, template);
+      const score = 0.55 * c + 0.45 * ((s + 1) / 2);
+      best = Math.max(best, score);
+    }
   }
   return best;
 }
@@ -782,7 +788,7 @@ function classifyBoard(imageData, located) {
 
   const clearMode = located.source === 'blob-grid';
   const scored = [];
-  const offsets = [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1],[2,0],[-2,0],[0,2],[0,-2]];
+  const offsets = [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1],[2,0],[-2,0],[0,2],[0,-2],[0.5,0.5],[0.5,-0.5],[-0.5,0.5],[-0.5,-0.5]];
 
   for (const cell of BOARD.cells) {
     const center = boardPoint(located.center, located.hexSize, cell);
@@ -855,8 +861,18 @@ function classifyBoard(imageData, located) {
     occupied = scored.filter((item) => blobOccupied.has(item.index));
   } else {
     const scores = scored.map((item) => item.templateScore);
-    const threshold = clamp(otsuThreshold(scores), 0.72, 0.965);
+    // The calibrated capture bank gives faded/framed boards a much cleaner
+    // occupied-vs-empty split. Keep Otsu, but avoid a low floor that can admit
+    // empty cells when the glyph bank is uncertain. If the result is only a
+    // few cells short of the standard starting inventory, fill from the next
+    // strongest candidates so faint starting marbles are not silently dropped.
+    const threshold = clamp(otsuThreshold(scores), 0.90, 0.965);
     occupied = scored.filter((item) => item.templateScore >= threshold);
+    if (occupied.length < STANDARD_TOTAL && occupied.length >= STANDARD_TOTAL - 8) {
+      const present = new Set(occupied.map((item) => item.index));
+      const fill = scored.filter((item) => !present.has(item.index)).sort((a,b) => b.templateScore - a.templateScore);
+      occupied = occupied.concat(fill.slice(0, STANDARD_TOTAL - occupied.length));
+    }
     if (occupied.length > STANDARD_TOTAL) {
       occupied.sort((a, b) => b.templateScore - a.templateScore);
       occupied = occupied.slice(0, STANDARD_TOTAL);
@@ -896,7 +912,7 @@ function classifyBoard(imageData, located) {
     const forcedByInventory = Boolean(item.inventoryAdjusted);
     const needsReview = forcedByInventory || (clearMode
       ? (baseScore < 0.55 || typeMargin < 0.035)
-      : (baseScore < 0.995 || typeMargin < 0.018));
+      : (baseScore < 0.90 || typeMargin < 0.006));
     cells[item.index] = item.type;
     details[item.index] = {
       index: item.index, x: item.x, y: item.y, type: item.type,
