@@ -492,6 +492,11 @@ async function loadScreenshot(file) {
   state.detectionTrusted = false;
   useDetectionBtn.disabled = true;
   trustSolveBtn.disabled = true;
+  // Open the detection UI before any image decoding or CPU-heavy analysis so
+  // the user always gets visual feedback even if a browser takes a while to
+  // decode or process a large screenshot.
+  document.getElementById('detectModal').classList.add('open');
+  detectionStatus.textContent = 'Reading screenshot…';
   const image = await decodeScreenshotFile(file);
   const maxW = 4096;
   const scale = Math.min(1, maxW / image.width);
@@ -503,7 +508,6 @@ async function loadScreenshot(file) {
   if (typeof image.close === 'function') image.close();
   logEvent('screenshot_loaded', { width: imageData.width, height: imageData.height, fileType: file.type || 'image' });
   detectionStatus.textContent = 'Finding the hex board…';
-  document.getElementById('detectModal').classList.add('open');
 
   await new Promise((r) => requestAnimationFrame(r));
   const located = locateBoard(imageData);
@@ -515,6 +519,8 @@ async function loadScreenshot(file) {
     useDetectionBtn.disabled = true;
     return;
   }
+  detectionStatus.textContent = 'Reading marble positions and symbols…';
+  await new Promise((r) => requestAnimationFrame(r));
   const detected = classifyBoard(imageData, located);
   logEvent('board_classified', { detected: detected.detected, review: detected.reviewIndices, counts: detected.counts, stats: detected.stats });
   state.located = located;
