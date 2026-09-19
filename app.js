@@ -519,9 +519,47 @@ async function loadScreenshot(file) {
     useDetectionBtn.disabled = true;
     return;
   }
+  // Show the located board immediately. Recognition runs in a worker so the
+  // modal stays responsive instead of freezing the page while all 91 cells
+  // are classified.
+  state.located = located;
+  drawDetectionOverlay();
   detectionStatus.textContent = 'Reading marble positions and symbols…';
   await new Promise((r) => requestAnimationFrame(r));
-  const detected = classifyBoard(imageData, located);
+
+  const detectionId = Date.now();
+  const detected = await new Promise((resolve, reject) => {
+    let settled = false;
+    const worker = new Worker('./detector.worker.js', { type: 'module' });
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      worker.terminate();
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      finish(reject, new Error('Screenshot recognition timed out after 90 seconds.'));
+    }, 90000);
+    worker.onmessage = (event) => {
+      if (event.data?.id !== detectionId) return;
+      if (event.data.progress) {
+        const { done, total } = event.data.progress;
+        detectionStatus.textContent = 'Reading marble positions and symbols… ' + done + '/' + total;
+        return;
+      }
+      if (event.data.ok) finish(resolve, event.data.result);
+      else finish(reject, new Error(event.data.error || 'Screenshot recognition failed.'));
+    };
+    worker.onerror = (event) => {
+      finish(reject, new Error(event.message || 'The screenshot recognition worker failed.'));
+    };
+    worker.postMessage({
+      id: detectionId,
+      image: { width: imageData.width, height: imageData.height, data: imageData.data.buffer },
+      located,
+    }, [imageData.data.buffer]);
+  });
   logEvent('board_classified', { detected: detected.detected, review: detected.reviewIndices, counts: detected.counts, stats: detected.stats });
   state.located = located;
   state.detectedBoard = detected.cells;
