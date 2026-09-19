@@ -625,6 +625,9 @@ function hungarianMin(cost) {
           j1 = j;
         }
       }
+      if (!Number.isFinite(delta) || j1 === 0) {
+        throw new Error('Recognition assignment encountered a non-finite cost.');
+      }
       for (let j = 0; j <= m; j++) {
         if (used[j]) {
           u[p[j]] += delta;
@@ -663,7 +666,35 @@ function assignToInventory(scored) {
     const score = item.scores[indexByName[name]];
     return Number.isFinite(score) ? -score : 0;
   }));
-  const assignment = hungarianMin(cost);
+  if (scored.length > slots.length) {
+    scored = [...scored]
+      .sort((a, b) => (b.occupancyScore ?? 0) - (a.occupancyScore ?? 0))
+      .slice(0, slots.length);
+  }
+  let assignment;
+  try {
+    assignment = hungarianMin(cost.slice(0, scored.length));
+  } catch {
+    // Recognition must never hang or fail solely because one score became
+    // unusable. Fall back to a deterministic capacity-constrained assignment.
+    const available = slots.map((name, index) => ({ name, index }));
+    const rows = scored.map((item, row) => {
+      const ranked = item.scores.map((score, index) => ({ score: Number.isFinite(score) ? score : -1e9, index }))
+        .sort((a, b) => b.score - a.score);
+      return { item, row, ranked, margin: ranked[0].score - (ranked[1]?.score ?? -1e9) };
+    }).sort((a, b) => b.margin - a.margin);
+    assignment = new Int32Array(scored.length);
+    for (const entry of rows) {
+      let pick = 0, best = -Infinity;
+      for (let j = 0; j < available.length; j++) {
+        const score = entry.item.scores[indexByName[available[j].name]];
+        if (Number.isFinite(score) && score > best) { best = score; pick = j; }
+      }
+      assignment[entry.row] = available[pick].index;
+      available.splice(pick, 1);
+    }
+    assignment = Array.from(assignment);
+  }
   return scored.map((item, row) => {
     const name = slots[assignment[row]];
     const index = indexByName[name];
@@ -671,7 +702,7 @@ function assignToInventory(scored) {
       ...item,
       typeName: name,
       type: TYPE_IDS[name],
-      assignedScore: item.scores[index],
+      assignedScore: Number.isFinite(item.scores[index]) ? item.scores[index] : 0,
       inventoryAdjusted: item.rawBestType !== index,
     };
   });
@@ -955,9 +986,10 @@ function classifyBoard(imageData, located, onProgress = null) {
       clearOccupancy,
       candidates: ranked.slice(0, 4).map(({ index }) => PIECE_INFO[TYPE_IDS[TYPE_NAMES[index]]].name),
     });
-    if (onProgress) onProgress(scored.length, BOARD.cells.length);
+    if (onProgress) onProgress(scored.length, BOARD.cells.length, 'reading');
   }
 
+  if (onProgress) onProgress(scored.length, BOARD.cells.length, 'assigning');
   let occupied;
   if (clearMode) {
     // Dark, manually cropped boards have a very clean separation between the
