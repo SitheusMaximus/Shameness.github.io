@@ -1,4 +1,4 @@
-import { classifyBoard } from './detector.js?v=20260919-3';
+import { classifyBoard } from './detector.js?v=20260919-7';
 
 self.onmessage = (event) => {
   const { id, image, located } = event.data || {};
