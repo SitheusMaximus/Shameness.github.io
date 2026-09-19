@@ -9,8 +9,8 @@ self.onmessage = (event) => {
       height: image.height,
       data: new Uint8ClampedArray(image.data),
     };
-    const result = classifyBoard(imageData, located, (done, total) => {
-      self.postMessage({ id, progress: { done, total } });
+    const result = classifyBoard(imageData, located, (done, total, stage = 'reading') => {
+      self.postMessage({ id, progress: { done, total, stage } });
     });
     self.postMessage({ id, ok: true, result });
   } catch (error) {
