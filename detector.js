@@ -978,7 +978,6 @@ function buildScreenshotPalette(imageData, located) {
     const center = localPaletteCenter(imageData, expectedX, centerY, Math.max(5, Math.round(located.hexSize * 0.24)));
     const feature = extractGlyphFeature(imageData, center, located.hexSize, 0.96);
     const color = colorFeature(imageData, center, Math.max(10, located.hexSize * 0.48));
-    if ((color.meanSat || 0) < 10 && (color.variance || 0) < 120) continue;
     palette[i] = { center, feature: feature.feature, color };
   }
   return palette;
