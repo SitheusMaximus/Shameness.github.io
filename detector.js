@@ -857,9 +857,9 @@ function classifyBoard(imageData, located) {
       if (colorTop === saltIndex || colorTop === mercuryIndex) {
         combined[saltIndex] = 0.75 * colorByType[saltIndex] + 0.25 * meanByType[saltIndex];
         combined[mercuryIndex] = 0.75 * colorByType[mercuryIndex] + 0.25 * meanByType[mercuryIndex];
-        if (Math.max(clearSaltGlyph, clearMercuryGlyph) > 0.18) {
-          const clearTotalSalt = combined[saltIndex] + 0.18 * clearSaltGlyph;
-          const clearTotalMercury = combined[mercuryIndex] + 0.18 * clearMercuryGlyph;
+        if (Math.max(clearGlyphScores[saltIndex], clearGlyphScores[mercuryIndex]) > 0.18) {
+          const clearTotalSalt = combined[saltIndex] + 0.18 * clearGlyphScores[saltIndex];
+          const clearTotalMercury = combined[mercuryIndex] + 0.18 * clearGlyphScores[mercuryIndex];
           combined[saltIndex] = clearTotalSalt;
           combined[mercuryIndex] = clearTotalMercury;
         }
