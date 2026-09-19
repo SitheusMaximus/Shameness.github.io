@@ -1,5 +1,5 @@
 import { BOARD, CELL_COUNT, PIECES, PIECE_INFO } from './solver.js';
-import { FEATURE_SIZE, FEATURE_SCALE, TEMPLATE_COUNTS, GLYPH_TEMPLATES, TYPE_NAMES, ICON_COLOR_HISTS, ICON_COLOR_MEANS, CLEAR_COLOR_HISTS, CLEAR_COLOR_MEANS, CLEAR_GLYPH_TEMPLATES, CAPTURE_GLYPH_TEMPLATES } from './recognition-data.js';
+import { FEATURE_SIZE, FEATURE_SCALE, TEMPLATE_COUNTS, GLYPH_TEMPLATES, TYPE_NAMES, ICON_COLOR_HISTS, ICON_COLOR_MEANS, CLEAR_COLOR_HISTS, CLEAR_COLOR_MEANS, CLEAR_GLYPH_TEMPLATES } from './recognition-data.js';
 
 const TYPE_IDS = Object.freeze({
   Salt: PIECES.SALT,
@@ -26,9 +26,6 @@ const FEATURE_MASK = makeFeatureMask(FEATURE_SIZE);
 const GAUSSIAN_KERNEL = makeGaussianKernel(1.7, 5);
 const TEMPLATE_FEATURES = Object.freeze(Object.fromEntries(
   TYPE_NAMES.map((name) => [name, GLYPH_TEMPLATES[name].map((encoded) => decodeBase64(encoded, Int8Array))]),
-));
-const CAPTURE_TEMPLATE_FEATURES = Object.freeze(Object.fromEntries(
-  TYPE_NAMES.map((name) => [name, (CAPTURE_GLYPH_TEMPLATES[name] || []).map((encoded) => decodeBase64(encoded, Int8Array))]),
 ));
 const CLEAR_GLYPH_FEATURES = Object.freeze(Object.fromEntries(Object.entries(CLEAR_GLYPH_TEMPLATES).map(([name, templates]) => [name, templates.map((encoded) => decodeBase64(encoded, Int8Array))])));
 
@@ -253,7 +250,7 @@ function signedShapeSimilarity(a, b) {
 
 function bestTemplateScore(feature, name) {
   let best = -Infinity;
-  const banks = [TEMPLATE_FEATURES[name] || [], CAPTURE_TEMPLATE_FEATURES[name] || []];
+  const banks = [TEMPLATE_FEATURES[name] || []];
   for (const bank of banks) {
     for (const template of bank) {
       const c = cosine(feature, template);
