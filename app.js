@@ -440,7 +440,7 @@ function updateStepUI() {
     const bName = b ? (PIECE_INFO[bType]?.name || 'Marble') : '';
     const aIcon = GAME_ICONS[aType];
     const bIcon = b ? GAME_ICONS[bType] : '';
-    return `<button class="solutionRow ${i === index ? 'active' : ''}" data-index="${i}"><span>${String(i + 1).padStart(2, '0')}</span><strong><img src="${aIcon}" alt="" aria-hidden="true"><b>${aName}</b>${b ? `<span class="solutionPlus">+</span><img src="${bIcon}" alt="" aria-hidden="true"><b>${bName}</b>` : ''}</strong><em>${formatCoord(a)}${b ? ` · ${formatCoord(b)}` : ''}</em></button>`;
+    return `<button class="solutionRow ${i === index ? 'active' : ''} ${i < index ? 'completed' : ''}" data-index="${i}"><span>${String(i + 1).padStart(2, '0')}</span><strong><img src="${aIcon}" alt="" aria-hidden="true"><b>${aName}</b>${b ? `<span class="solutionPlus">+</span><img src="${bIcon}" alt="" aria-hidden="true"><b>${bName}</b>` : ''}</strong><em>${formatCoord(a)}${b ? ` · ${formatCoord(b)}` : ''}</em></button>`;
   }).join('');
   solutionSteps.querySelectorAll('.solutionRow').forEach((row) => row.addEventListener('click', () => {
     state.solutionIndex = Number(row.dataset.index);
