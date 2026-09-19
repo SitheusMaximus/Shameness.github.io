@@ -800,12 +800,16 @@ function hsvMeanScore(feature, type, clearMode = false) {
   return clamp(1 - Math.sqrt(dh * dh * 0.50 + ds * ds * 0.25 + dv * dv * 0.25), 0, 1);
 }
 
-function classifyBoard(imageData, located) {
+function classifyBoard(imageData, located, onProgress = null) {
   if (!located) throw new Error('Board could not be located');
 
   const clearMode = located.source === 'blob-grid';
   const scored = [];
-  const offsets = [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1],[2,0],[-2,0],[0,2],[0,-2],[0.5,0.5],[0.5,-0.5],[-0.5,0.5],[-0.5,-0.5]];
+  // Keep a small positional search around the located centre. The old 17-point
+  // search multiplied the most expensive part of recognition enough to lock
+  // the browser for minutes on normal screenshots. These five samples cover
+  // the useful sub-pixel drift without making import unusably slow.
+  const offsets = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
 
   for (const cell of BOARD.cells) {
     const center = boardPoint(located.center, located.hexSize, cell);
@@ -899,6 +903,7 @@ function classifyBoard(imageData, located) {
       clearOccupancy,
       candidates: ranked.slice(0, 4).map(({ index }) => PIECE_INFO[TYPE_IDS[TYPE_NAMES[index]]].name),
     });
+    if (onProgress) onProgress(scored.length, BOARD.cells.length);
   }
 
   let occupied;
