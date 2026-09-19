@@ -615,7 +615,10 @@ screenshotInput.addEventListener('change', () => {
   if (!file) return;
   loadScreenshot(file).catch((error) => {
     console.error('Sigmar screenshot import failed:', error);
-    logEvent('screenshot_error', { message: error?.message || String(error) });
+    logEvent('screenshot_error', {
+      message: error?.message || String(error),
+      stack: error?.stack || null,
+    });
     document.getElementById('detectModal').classList.add('open');
     detectionStatus.innerHTML = '<strong>Screenshot import failed.</strong><br>' +
       (error?.message || 'The image could not be processed.') +
