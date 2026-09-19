@@ -176,7 +176,7 @@ function drawBoard() {
     }
 
     if (state.detectedDetails) {
-      const detail = state.detectedDetails[cell.index];
+      const detail = state.detectedDetails?.[cell.index];
       if (detail?.needsReview && detail.type >= 0) {
         ctx.beginPath();
         ctx.strokeStyle = '#f59e0b';
