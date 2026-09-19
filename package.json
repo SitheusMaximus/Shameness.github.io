@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/solver.test.mjs",
+    "test": "node tests/solver.test.mjs && node tests/detector.test.mjs && node tests/app-smoke.test.mjs",
     "serve": "python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.5"
   }
 }

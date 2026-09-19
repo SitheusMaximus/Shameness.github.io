@@ -1,6 +1,7 @@
 import { BOARD, CELL_COUNT, PIECES, PIECE_INFO, ELEMENTS, solve, validateBoard, computeFreeMask } from './solver.js';
 import { locateBoard, classifyBoard, boardPoint } from './detector.js';
 import { GAME_ICONS } from './game-icons.js';
+import { logEvent, clearDiagnostics, copyDiagnostics, downloadDiagnostics, diagnosticsJSON } from './diagnostics.js';
 
 const canvas = document.getElementById('boardCanvas');
 const ctx = canvas.getContext('2d');
@@ -29,6 +30,11 @@ const pieceCounts = document.getElementById('pieceCounts');
 const palette = document.getElementById('palette');
 const zoomSlider = document.getElementById('zoomSlider');
 const reviewBanner = document.getElementById('reviewBanner');
+const diagnosticsPanel = document.getElementById('diagnosticsPanel');
+const diagnosticsOutput = document.getElementById('diagnosticsOutput');
+const copyDiagnosticsBtn = document.getElementById('copyDiagnosticsBtn');
+const downloadDiagnosticsBtn = document.getElementById('downloadDiagnosticsBtn');
+const clearDiagnosticsBtn = document.getElementById('clearDiagnosticsBtn');
 const REVIEW_CONFIDENCE = 0.48;
 
 const state = {
@@ -44,6 +50,7 @@ const state = {
   boardView: { center: { x: 0, y: 0 }, hexSize: 50 },
   dragging: false,
   playing: false,
+  detectionTrusted: false,
 };
 state.board.fill(-1);
 
@@ -170,7 +177,7 @@ function drawBoard() {
 
     if (state.detectedDetails) {
       const detail = state.detectedDetails[cell.index];
-      if (detail?.confidence !== undefined && detail.confidence < REVIEW_CONFIDENCE && detail.type >= 0) {
+      if (detail?.needsReview && detail.type >= 0) {
         ctx.beginPath();
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 3;
@@ -228,19 +235,47 @@ function updateCounts() {
 }
 
 function pushHistory() {
-  state.history.push(new Int8Array(state.board));
+  state.history.push({
+    board: new Int8Array(state.board),
+    review: state.detectedDetails ? Object.values(state.detectedDetails).map((d) => d ? { index: d.index, needsReview: Boolean(d.needsReview), confidence: d.confidence, type: d.type } : null) : null,
+  });
   if (state.history.length > 80) state.history.shift();
+}
+
+function getReviewIndices() {
+  if (!state.detectedDetails) return [];
+  return Object.values(state.detectedDetails).filter((d) => d?.type >= 0 && d.needsReview).map((d) => d.index);
+}
+
+function updateReviewUI() {
+  const review = getReviewIndices();
+  if (!state.detectedDetails) {
+    reviewBanner.classList.remove('visible');
+    reviewBanner.textContent = '';
+  } else if (review.length) {
+    reviewBanner.classList.add('visible');
+    reviewBanner.textContent = `${review.length} screenshot cells need verification. Fix them or use “Trust interpretation & solve”. Amber rings stay until each flagged cell is resolved.`;
+  } else {
+    reviewBanner.classList.add('visible');
+    reviewBanner.textContent = 'All flagged screenshot cells have been manually verified. The board is ready to solve.';
+  }
+  solveBtn.disabled = countOccupied() === 0 || review.length > 0;
 }
 
 function setCell(index, type) {
   if (index < 0) return;
   pushHistory();
+  const oldType = state.board[index];
   state.board[index] = type;
   state.solution = null;
   state.solutionIndex = -1;
-  state.detectedDetails = null;
-  state.detectedBoard = null;
-  reviewBanner.classList.remove('visible');
+  if (state.detectedDetails?.[index]) {
+    state.detectedDetails[index].type = type;
+    state.detectedDetails[index].needsReview = false;
+    state.detectedDetails[index].confidence = 1;
+    state.detectedDetails[index].manualCorrection = true;
+  }
+  logEvent('manual_correction', { index, from: oldType, to: type, remainingReview: getReviewIndices().length });
   renderAll();
 }
 
@@ -251,7 +286,15 @@ canvas.addEventListener('click', (event) => {
   if (index < 0) return;
   if (state.board[index] === state.selectedPiece) {
     pushHistory();
+    const oldType = state.board[index];
     state.board[index] = -1;
+    if (state.detectedDetails?.[index]) {
+      state.detectedDetails[index].type = -1;
+      state.detectedDetails[index].needsReview = false;
+      state.detectedDetails[index].confidence = 1;
+      state.detectedDetails[index].manualCorrection = true;
+    }
+    logEvent('manual_correction', { index, from: oldType, to: -1, remainingReview: getReviewIndices().length });
   } else {
     setCell(index, state.selectedPiece);
     return;
@@ -262,7 +305,14 @@ canvas.addEventListener('click', (event) => {
 undoBtn.addEventListener('click', () => {
   const last = state.history.pop();
   if (!last) return;
-  state.board.set(last);
+  state.board.set(last.board || last);
+  if (last.review && state.detectedDetails) {
+    for (const item of last.review) if (item && state.detectedDetails[item.index]) {
+      state.detectedDetails[item.index].needsReview = item.needsReview;
+      state.detectedDetails[item.index].confidence = item.confidence;
+      state.detectedDetails[item.index].type = item.type;
+    }
+  }
   state.solution = null;
   state.solutionIndex = -1;
   renderAll();
@@ -275,6 +325,7 @@ clearBtn.addEventListener('click', () => {
   state.solutionIndex = -1;
   state.detectedDetails = null;
   state.detectedBoard = null;
+  state.detectionTrusted = false;
   reviewBanner.classList.remove('visible');
   renderAll();
 });
@@ -284,7 +335,7 @@ function renderAll() {
   updateCounts();
   updateStepUI();
   undoBtn.disabled = state.history.length === 0;
-  solveBtn.disabled = countOccupied() === 0;
+  updateReviewUI();
 }
 
 function countOccupied() {
@@ -295,7 +346,13 @@ function countOccupied() {
 
 async function solveCurrent() {
   if (!countOccupied()) return;
+  const review = getReviewIndices();
+  if (review.length && !state.detectionTrusted) {
+    setStatus(`${review.length} detected cells still need verification.`, 'error');
+    return;
+  }
   setStatus('Solving...', 'working');
+  logEvent('solve_start', { occupied: countOccupied(), reviewRemaining: getReviewIndices().length, trusted: state.detectionTrusted });
   solveBtn.disabled = true;
   state.editing = false;
   try {
@@ -316,13 +373,16 @@ async function solveCurrent() {
       state.solution = null;
       state.solutionIndex = -1;
       setStatus(`No solution found. ${result.stats.exploredStates.toLocaleString()} dead states checked.`, 'error');
+      logEvent('solve_complete', { solved: false, stats: result.stats });
       state.editing = true;
     } else {
       state.solution = result;
       state.solutionIndex = 0;
       setStatus(`Solved in ${result.steps.length} moves · ${result.stats.elapsedMs} ms · ${result.stats.nodes.toLocaleString()} search nodes`, 'ok');
+      logEvent('solve_complete', { solved: true, moves: result.steps.length, stats: result.stats });
     }
   } catch (error) {
+    logEvent('solve_error', { message: error.message });
     setStatus(error.message, 'error');
     state.editing = true;
   }
@@ -405,6 +465,7 @@ async function loadScreenshot(file) {
   // successful interpretation armed if the new image fails to parse.
   state.detectedBoard = null;
   state.detectedDetails = null;
+  state.detectionTrusted = false;
   useDetectionBtn.disabled = true;
   trustSolveBtn.disabled = true;
   const image = await createImageBitmap(file);
@@ -415,11 +476,13 @@ async function loadScreenshot(file) {
   screenshotCtx.clearRect(0, 0, screenshotCanvas.width, screenshotCanvas.height);
   screenshotCtx.drawImage(image, 0, 0, screenshotCanvas.width, screenshotCanvas.height);
   const imageData = screenshotCtx.getImageData(0, 0, screenshotCanvas.width, screenshotCanvas.height);
+  logEvent('screenshot_loaded', { width: imageData.width, height: imageData.height, fileType: file.type || 'image' });
   detectionStatus.textContent = 'Finding the hex board…';
   document.getElementById('detectModal').classList.add('open');
 
   await new Promise((r) => requestAnimationFrame(r));
   const located = locateBoard(imageData);
+  logEvent('board_located', located ? { center: located.center, hexSize: located.hexSize, source: located.source || 'beige-grid', bbox: located.bbox } : { found: false });
   if (!located) {
     detectionStatus.textContent = 'Could not locate the board automatically. Use the editor instead.';
     state.detectedBoard = null;
@@ -428,6 +491,7 @@ async function loadScreenshot(file) {
     return;
   }
   const detected = classifyBoard(imageData, located);
+  logEvent('board_classified', { detected: detected.detected, review: detected.reviewIndices, counts: detected.counts, stats: detected.stats });
   state.located = located;
   state.detectedBoard = detected.cells;
   state.detectedDetails = Object.fromEntries(detected.details.map((d) => [d.index, d]));
@@ -464,7 +528,7 @@ function drawDetectionOverlay() {
     const detail = state.detectedDetails[cell.index];
     screenshotCtx.beginPath();
     screenshotCtx.arc(p.x, p.y, Math.max(3, state.located.hexSize * 0.12), 0, Math.PI * 2);
-    screenshotCtx.strokeStyle = detail?.confidence < REVIEW_CONFIDENCE ? '#f59e0b' : '#5eead4';
+    screenshotCtx.strokeStyle = detail?.needsReview ? '#f59e0b' : '#5eead4';
     screenshotCtx.stroke();
   }
   screenshotCtx.restore();
@@ -496,18 +560,21 @@ function acceptDetectedBoard() {
   if (!state.detectedBoard) return;
   document.getElementById('detectModal').classList.remove('open');
   state.editing = true;
-  reviewBanner.classList.add('visible');
-  setStatus('Screenshot interpretation accepted. Review the board, then solve.', 'ok');
+  state.detectionTrusted = false;
+  updateReviewUI();
+  setStatus(getReviewIndices().length ? 'Screenshot interpretation accepted. Review the amber-marked cells.' : 'Screenshot interpretation accepted. Board is ready to solve.', 'ok');
   renderAll();
 }
 
 useDetectionBtn.addEventListener('click', acceptDetectedBoard);
 trustSolveBtn.addEventListener('click', async () => {
   if (!state.detectedBoard) return;
-  acceptDetectedBoard();
+  state.detectionTrusted = true;
+  logEvent('detection_trusted', { reviewSkipped: getReviewIndices().length });
+  document.getElementById('detectModal').classList.remove('open');
   await solveCurrent();
 });
-closeDetectBtn.addEventListener('click', () => { document.getElementById('detectModal').classList.remove('open'); if (state.detectedBoard) { reviewBanner.classList.add('visible'); setStatus('Detection remains on the board. Review it before solving.', 'ok'); renderAll(); } });
+closeDetectBtn.addEventListener('click', () => { document.getElementById('detectModal').classList.remove('open'); if (state.detectedBoard) { updateReviewUI(); setStatus(getReviewIndices().length ? 'Detection remains on the board. Review the amber-marked cells.' : 'Detection verified. Ready to solve.', 'ok'); renderAll(); } });
 
 canvas.addEventListener('mousemove', (event) => {
   const rect = canvas.getBoundingClientRect();
@@ -529,9 +596,21 @@ window.addEventListener('paste', async (event) => {
   }
 });
 
+function refreshDiagnosticsPanel() {
+  if (!diagnosticsOutput) return;
+  diagnosticsOutput.value = diagnosticsJSON({ board: { occupied: countOccupied(), review: getReviewIndices() } });
+}
+copyDiagnosticsBtn?.addEventListener('click', async () => { try { await copyDiagnostics({ board: { occupied: countOccupied(), review: getReviewIndices() } }); setStatus('Diagnostics copied.', 'ok'); } catch (e) { setStatus(`Could not copy diagnostics: ${e.message}`, 'error'); } });
+downloadDiagnosticsBtn?.addEventListener('click', () => downloadDiagnostics({ board: { occupied: countOccupied(), review: getReviewIndices() } }));
+clearDiagnosticsBtn?.addEventListener('click', () => { clearDiagnostics(); refreshDiagnosticsPanel(); });
+diagnosticsPanel?.addEventListener('toggle', refreshDiagnosticsPanel);
+window.addEventListener('sigmar:diagnostic', refreshDiagnosticsPanel);
+window.addEventListener('sigmar:diagnostic:clear', refreshDiagnosticsPanel);
+
 buildPalette();
 renderAll();
 setStatus('Ready. The board is blank. Import a screenshot or edit it manually.');
+refreshDiagnosticsPanel();
 resizeCanvas();
 
 window.__SIGMAR__ = { state, BOARD, PIECES, solve, validateBoard, locateBoard, classifyBoard, boardPoint };
