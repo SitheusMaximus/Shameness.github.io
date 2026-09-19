@@ -914,7 +914,7 @@ function classifyBoard(imageData, located) {
   if (occupied.length > STANDARD_TOTAL) { occupied.sort((a, b) => b.templateScore - a.templateScore); occupied = occupied.slice(0, STANDARD_TOTAL); }
   const assigned = clearMode
     ? occupied.map((item) => ({ ...item, typeName: TYPE_NAMES[item.rawBestType], type: TYPE_IDS[TYPE_NAMES[item.rawBestType]], assignedScore: item.rawBestScore, inventoryAdjusted: false }))
-    : (occupied.length === STANDARD_TOTAL ? assignToInventory(occupied) : assignToInventory(occupied));
+    : assignToInventory(occupied);
   const cells = new Int8Array(CELL_COUNT); cells.fill(-1);
   const details = Array.from({ length: CELL_COUNT }, () => null);
   const occupiedSet = new Set(occupied.map((item) => item.index));
