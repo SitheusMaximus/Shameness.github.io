@@ -102,8 +102,8 @@ function grayAt(imageData, x, y) {
   return g00 * (1 - dx) * (1 - dy) + g10 * dx * (1 - dy) + g01 * (1 - dx) * dy + g11 * dx * dy;
 }
 
-function sampleCanonicalGray(imageData, center, hexSize) {
-  const sourceSize = Math.max(18, pythonRound(hexSize * 1.8));
+function sampleCanonicalGray(imageData, center, hexSize, scaleFactor = 1.8) {
+  const sourceSize = Math.max(18, pythonRound(hexSize * scaleFactor));
   const patch = new Float32Array(FEATURE_SIZE * FEATURE_SIZE);
   const x0 = pythonRound(center.x - sourceSize / 2);
   const y0 = pythonRound(center.y - sourceSize / 2);
@@ -174,8 +174,8 @@ function gaussianBlur(source, size, kernel) {
   return output;
 }
 
-function extractGlyphFeature(imageData, center, hexSize) {
-  const gray = sampleCanonicalGray(imageData, center, hexSize);
+function extractGlyphFeature(imageData, center, hexSize, scaleFactor = 1.8) {
+  const gray = sampleCanonicalGray(imageData, center, hexSize, scaleFactor);
   const blur = gaussianBlur(gray, FEATURE_SIZE, GAUSSIAN_KERNEL);
   const raw = new Float32Array(gray.length);
   let mean = 0;
@@ -934,10 +934,67 @@ function hsvMeanScore(feature, type, clearMode = false) {
   return clamp(1 - Math.sqrt(dh * dh * 0.50 + ds * ds * 0.25 + dv * dv * 0.25), 0, 1);
 }
 
+function localPaletteCenter(imageData, x, y, radius = 8) {
+  let best = { x, y, score: -Infinity };
+  const { width, height, data } = imageData;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const cx = Math.round(x + dx);
+      const cy = Math.round(y + dy);
+      if (cx < 1 || cy < 1 || cx >= width - 1 || cy >= height - 1) continue;
+      let satSum = 0;
+      let valueSum = 0;
+      let edgeSum = 0;
+      let n = 0;
+      for (let py = -3; py <= 3; py++) {
+        for (let px = -3; px <= 3; px++) {
+          const xx = cx + px, yy = cy + py;
+          const i = (yy * width + xx) * 4;
+          const [, sat, val] = rgbToHsv(data[i], data[i + 1], data[i + 2]);
+          satSum += sat;
+          valueSum += val;
+          const i2 = (yy * width + Math.min(width - 1, xx + 1)) * 4;
+          edgeSum += Math.abs(data[i] - data[i2]) + Math.abs(data[i + 1] - data[i2 + 1]) + Math.abs(data[i + 2] - data[i2 + 2]);
+          n++;
+        }
+      }
+      const score = (satSum / n) * 0.55 + (valueSum / n) * 0.15 + (edgeSum / n) * 0.30;
+      if (score > best.score) best = { x: cx, y: cy, score };
+    }
+  }
+  return best;
+}
+
+function buildScreenshotPalette(imageData, located) {
+  if (!located?.bbox || located.source === 'blob-grid') return null;
+  const { x, y, width, height } = located.bbox;
+  const startX = x + width * 0.335;
+  const spacing = width * 0.0477;
+  const centerY = y + height + located.hexSize * 1.13;
+  const palette = new Array(11).fill(null);
+  for (let i = 0; i < 11; i++) {
+    const center = localPaletteCenter(imageData, startX + spacing * i, centerY, Math.max(5, Math.round(located.hexSize * 0.24)));
+    const feature = extractGlyphFeature(imageData, center, located.hexSize, 0.96);
+    const color = colorFeature(imageData, center, Math.max(10, located.hexSize * 0.48));
+    if ((color.meanSat || 0) < 10 && (color.variance || 0) < 120) continue;
+    palette[i] = { center, feature: feature.feature, color };
+  }
+  return palette;
+}
+
+function screenshotPaletteScore(feature, prototype) {
+  if (!feature || !prototype) return 0;
+  const c = cosine(feature, prototype);
+  const s = signedShapeSimilarity(feature, prototype);
+  return 0.65 * c + 0.35 * ((s + 1) / 2);
+}
+
 function classifyBoard(imageData, located, onProgress = null) {
   if (!located) throw new Error('Board could not be located');
 
   const clearMode = located.source === 'blob-grid';
+  const screenshotPalette = buildScreenshotPalette(imageData, located);
+  const palettePrototypes = screenshotPalette ? screenshotPalette.map((entry) => entry?.feature ?? null) : null;
   const scored = [];
   // Keep a small positional search around the located centre. The old 17-point
   // search multiplied the most expensive part of recognition enough to lock
@@ -968,28 +1025,20 @@ function classifyBoard(imageData, located, onProgress = null) {
     for (const entry of colorRanked) colorByType[entry.type] = entry.score;
     const meanByType = TYPE_NAMES.map((_, type) => hsvMeanScore(color, type, clearMode));
 
+    const paletteScores = palettePrototypes
+      ? palettePrototypes.map((prototype) => {
+          if (!prototype) return 0;
+          return Math.max(...variants.map((variant) => screenshotPaletteScore(variant.feature, prototype)));
+        })
+      : null;
     const combined = TYPE_NAMES.map((_, type) => {
       if (clearMode) return 0.48 * colorByType[type] + 0.52 * meanByType[type];
-
-      // The glyph itself is rendered in two useful states. Keep both template
-      // banks in the type score instead of forcing the faded bank to explain
-      // bright marbles or vice versa. Colour remains a secondary signal
-      // because the board lighting varies by position.
       const colour = 0.55 * colorByType[type] + 0.45 * meanByType[type];
-      return 0.58 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.22 * colour;
-    });
-    if (!clearMode && located.hexSize >= 34) {
-      const waterIndex = TYPE_NAMES.indexOf('Water');
-      const earthIndex = TYPE_NAMES.indexOf('Earth');
-      const pairGap = Math.abs(glyphScores[waterIndex] - glyphScores[earthIndex]);
-      if (pairGap < 0.011) {
-        const [, residualGreen, residualBlue] = colorResidual;
-        const waterSignal = clamp((residualBlue - 0.5 * residualGreen) / 12, -1, 1);
-        const tieBreak = 0.04 * waterSignal;
-        combined[waterIndex] += tieBreak;
-        combined[earthIndex] -= tieBreak;
+      if (paletteScores && type < 11 && paletteScores[type] > 0) {
+        return 0.68 * paletteScores[type] + 0.20 * glyphScores[type] + 0.12 * colour;
       }
-    }
+      return 0.62 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.18 * colour;
+    });
     if (clearMode) {
       const colorTop = colorRanked[0]?.type ?? -1;
       const saltIndex = TYPE_NAMES.indexOf('Salt'), mercuryIndex = TYPE_NAMES.indexOf('Mercury');
@@ -1041,6 +1090,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       glyphScores,
       prototypeFeature,
       colorScores,
+      paletteScores,
       meanScores: meanByType,
       rawBestType: ranked[0]?.index ?? -1,
       rawBestScore: ranked[0]?.score ?? 0,
@@ -1084,9 +1134,13 @@ function classifyBoard(imageData, located, onProgress = null) {
 
   if (!clearMode) applyAdaptivePrototypes(occupied);
 
-  const assigned = clearMode
-    ? occupied.map((item) => ({ ...item, typeName: TYPE_NAMES[item.rawBestType], type: TYPE_IDS[TYPE_NAMES[item.rawBestType]], assignedScore: item.rawBestScore, inventoryAdjusted: false }))
-    : assignToInventory(occupied);
+  const assigned = occupied.map((item) => ({
+    ...item,
+    typeName: TYPE_NAMES[item.rawBestType],
+    type: TYPE_IDS[TYPE_NAMES[item.rawBestType]],
+    assignedScore: item.rawBestScore,
+    inventoryAdjusted: false,
+  }));
   const cells = new Int8Array(CELL_COUNT); cells.fill(-1);
   const details = Array.from({ length: CELL_COUNT }, () => null);
   const occupiedSet = new Set(occupied.map((item) => item.index));
@@ -1115,9 +1169,11 @@ function classifyBoard(imageData, located, onProgress = null) {
     const confidence = clearMode
       ? clamp(0.5 + (item.colorTopScore - (colorMargin(item) || 0)) * 2.0 + Math.max(0, typeMargin) * 1.5, 0, 1)
       : clamp(0.5 + typeMargin * 7.5, 0, 1);
-    const forcedByInventory = Boolean(item.inventoryAdjusted);
-    const inventoryPenalty = forcedByInventory ? Math.max(0, item.rawBestScore - item.assignedScore) : 0;
-    const inventoryConflict = forcedByInventory && inventoryPenalty > 0.035;
+    const inventoryLimit = TEMPLATE_COUNTS[item.typeName] ?? 0;
+    const rawCountForType = occupied.reduce((n, other) => n + (other.rawBestType === item.rawBestType ? 1 : 0), 0);
+    const inventoryConflict = !clearMode && rawCountForType > inventoryLimit;
+    const forcedByInventory = false;
+    const inventoryPenalty = 0;
     const needsReview = inventoryConflict || (clearMode
       ? (baseScore < 0.55 || typeMargin < 0.035)
       : (item.occupancyScore < 2.8 || baseScore < 0.86 || typeMargin < 0.010));
@@ -1128,7 +1184,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       similarity: item.assignedScore, typeMargin, occupancyScore: item.occupancyScore,
       ringDelta: item.ringDelta, colorMeanSat: item.colorMeanSat, glyphEnergy: item.glyphEnergy,
       centralGlyphEdge: item.centralGlyphEdge ?? null,
-      templateScore: item.templateScore, rawBestType: item.rawBestType,
+      templateScore: item.templateScore, paletteScores: item.paletteScores ?? null, rawBestType: item.rawBestType,
       rawBestName: item.rawBestType >= 0 ? TYPE_NAMES[item.rawBestType] : null,
       forcedByInventory, inventoryPenalty, inventoryConflict, needsReview,
     };
