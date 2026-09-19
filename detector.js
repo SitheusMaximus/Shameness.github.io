@@ -708,6 +708,59 @@ function assignToInventory(scored) {
   });
 }
 
+function adaptivePrototypeScore(feature, prototype) {
+  if (!feature || !prototype) return 0;
+  const c = cosine(feature, prototype);
+  const s = signedShapeSimilarity(feature, prototype);
+  return 0.55 * c + 0.45 * ((s + 1) / 2);
+}
+
+function buildAdaptivePrototypes(scored) {
+  const prototypes = new Array(TYPE_NAMES.length).fill(null);
+  for (let type = 0; type < TYPE_NAMES.length; type++) {
+    const seeds = scored.filter((item) =>
+      item.rawBestType === type &&
+      item.prototypeFeature &&
+      item.occupancyScore >= 2.2 &&
+      item.rawBestScore >= 0.84 &&
+      (item.rawBestScore - item.rawSecondScore) >= 0.012
+    );
+    if (seeds.length < 2) continue;
+
+    let bestSeed = seeds[0];
+    let bestTotal = -Infinity;
+    for (const candidate of seeds) {
+      let total = 0;
+      for (const other of seeds) {
+        if (candidate !== other) total += adaptivePrototypeScore(candidate.prototypeFeature, other.prototypeFeature);
+      }
+      if (total > bestTotal) {
+        bestTotal = total;
+        bestSeed = candidate;
+      }
+    }
+    prototypes[type] = bestSeed.prototypeFeature;
+  }
+  return prototypes;
+}
+
+function applyAdaptivePrototypes(scored) {
+  const prototypes = buildAdaptivePrototypes(scored);
+  for (const item of scored) {
+    if (!item.prototypeFeature) continue;
+    for (let type = 0; type < TYPE_NAMES.length; type++) {
+      if (!prototypes[type]) continue;
+      const learned = adaptivePrototypeScore(item.prototypeFeature, prototypes[type]);
+      item.scores[type] = 0.82 * item.scores[type] + 0.18 * learned;
+    }
+    const ranked = item.scores.map((score, index) => ({ score, index })).sort((a, b) => b.score - a.score);
+    item.rawBestType = ranked[0]?.index ?? -1;
+    item.rawBestScore = ranked[0]?.score ?? 0;
+    item.rawSecondScore = ranked[1]?.score ?? -1;
+    item.candidates = ranked.slice(0, 4).map(({ index }) => PIECE_INFO[TYPE_IDS[TYPE_NAMES[index]]].name);
+  }
+}
+
 function adaptiveOccupancyThreshold(values) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -952,6 +1005,16 @@ function classifyBoard(imageData, located, onProgress = null) {
       }
     }
     const ranked = combined.map((score, index) => ({ score, index })).sort((a, b) => b.score - a.score);
+    const rawBestType = ranked[0]?.index ?? -1;
+    let prototypeFeature = null;
+    if (rawBestType >= 0) {
+      let bestVariant = null;
+      for (const variant of variants) {
+        const score = bestTemplateScore(variant.feature, TYPE_NAMES[rawBestType]);
+        if (!bestVariant || score > bestVariant.score) bestVariant = { score, feature: variant.feature };
+      }
+      prototypeFeature = bestVariant?.feature ?? null;
+    }
     const topColor = colorRanked[0]?.score ?? 0;
     // Occupancy must be independent from the type score. A faint marble can
     // be a poor colour/type match while still being an excellent icon match.
@@ -976,6 +1039,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       templateScore: ranked[0]?.score ?? 0,
       scores: Array.from(combined),
       glyphScores,
+      prototypeFeature,
       colorScores,
       meanScores: meanByType,
       rawBestType: ranked[0]?.index ?? -1,
@@ -1017,6 +1081,9 @@ function classifyBoard(imageData, located, onProgress = null) {
   }
 
   if (occupied.length > STANDARD_TOTAL) { occupied.sort((a, b) => b.templateScore - a.templateScore); occupied = occupied.slice(0, STANDARD_TOTAL); }
+
+  if (!clearMode) applyAdaptivePrototypes(occupied);
+
   const assigned = clearMode
     ? occupied.map((item) => ({ ...item, typeName: TYPE_NAMES[item.rawBestType], type: TYPE_IDS[TYPE_NAMES[item.rawBestType]], assignedScore: item.rawBestScore, inventoryAdjusted: false }))
     : assignToInventory(occupied);
@@ -1049,9 +1116,11 @@ function classifyBoard(imageData, located, onProgress = null) {
       ? clamp(0.5 + (item.colorTopScore - (colorMargin(item) || 0)) * 2.0 + Math.max(0, typeMargin) * 1.5, 0, 1)
       : clamp(0.5 + typeMargin * 7.5, 0, 1);
     const forcedByInventory = Boolean(item.inventoryAdjusted);
-    const needsReview = forcedByInventory || (clearMode
+    const inventoryPenalty = forcedByInventory ? Math.max(0, item.rawBestScore - item.assignedScore) : 0;
+    const inventoryConflict = forcedByInventory && inventoryPenalty > 0.035;
+    const needsReview = inventoryConflict || (clearMode
       ? (baseScore < 0.55 || typeMargin < 0.035)
-      : (item.occupancyScore < 2.8 || baseScore < 0.86 || typeMargin < 0.006));
+      : (item.occupancyScore < 2.8 || baseScore < 0.86 || typeMargin < 0.010));
     cells[item.index] = item.type;
     details[item.index] = {
       index: item.index, x: item.x, y: item.y, type: item.type,
@@ -1061,7 +1130,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       centralGlyphEdge: item.centralGlyphEdge ?? null,
       templateScore: item.templateScore, rawBestType: item.rawBestType,
       rawBestName: item.rawBestType >= 0 ? TYPE_NAMES[item.rawBestType] : null,
-      forcedByInventory, needsReview,
+      forcedByInventory, inventoryPenalty, inventoryConflict, needsReview,
     };
   }
 
@@ -1075,7 +1144,7 @@ function classifyBoard(imageData, located, onProgress = null) {
     counts,
     stats: {
       candidates: scored.length, occupiedCandidates: occupied.length, mode: clearMode ? 'bright-crop' : 'faded-board',
-      reviewedCells: reviewIndices.length, forcedByInventory: reviewIndices.filter((index) => details[index]?.forcedByInventory).length,
+      reviewedCells: reviewIndices.length, forcedByInventory: assigned.filter((item) => item.inventoryAdjusted).length, inventoryConflicts: reviewIndices.filter((index) => details[index]?.inventoryConflict).length,
     },
     summary: `${assigned.length}/${CELL_COUNT} cells detected${reviewIndices.length ? `, ${reviewIndices.length} need review` : ''}`,
   };
