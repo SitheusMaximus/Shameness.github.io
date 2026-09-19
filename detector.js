@@ -274,7 +274,7 @@ function bestTemplateScore(feature, name) {
       best = Math.max(best, score);
     }
   }
-  return best;
+  return Number.isFinite(best) ? best : 0;
 }
 
 function bestClearGlyphScore(feature, name) {
@@ -285,7 +285,7 @@ function bestClearGlyphScore(feature, name) {
     const score = 0.55 * c + 0.45 * ((s + 1) / 2);
     best = Math.max(best, score);
   }
-  return best;
+  return Number.isFinite(best) ? best : 0;
 }
 
 function beigePixel(r, g, b) {
@@ -659,7 +659,10 @@ function assignToInventory(scored) {
     for (let i = 0; i < TEMPLATE_COUNTS[name]; i++) slots.push(name);
   }
   const indexByName = Object.fromEntries(TYPE_NAMES.map((name, i) => [name, i]));
-  const cost = scored.map((item) => slots.map((name) => -item.scores[indexByName[name]]));
+  const cost = scored.map((item) => slots.map((name) => {
+    const score = item.scores[indexByName[name]];
+    return Number.isFinite(score) ? -score : 0;
+  }));
   const assignment = hungarianMin(cost);
   return scored.map((item, row) => {
     const name = slots[assignment[row]];
