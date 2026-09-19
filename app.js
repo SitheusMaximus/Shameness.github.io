@@ -128,12 +128,15 @@ function drawBoard() {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, rect.width, rect.height);
 
-  const freeMask = computeFreeMask(state.board);
-  const solutionMove = state.solution && state.solutionIndex >= 0 ? state.solution.steps[state.solutionIndex] : null;
+  const displayBoard = getSolutionDisplayBoard();
+  const freeMask = computeFreeMask(displayBoard);
+  const solutionMove = state.solution && state.solutionIndex >= 0 && state.solutionIndex < state.solution.steps.length
+    ? state.solution.steps[state.solutionIndex]
+    : null;
 
   for (const cell of BOARD.cells) {
     const p = pointForIndex(cell.index);
-    const occupied = state.board[cell.index] >= 0;
+    const occupied = displayBoard[cell.index] >= 0;
     const pts = polygonPoints(p, state.boardView.hexSize - 2.5);
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
@@ -148,7 +151,7 @@ function drawBoard() {
     ctx.stroke();
 
     if (occupied) {
-      const type = state.board[cell.index];
+      const type = displayBoard[cell.index];
       const info = PIECE_INFO[type];
       const icon = GAME_ICON_IMAGES.get(type);
       const r = state.boardView.hexSize * 0.56;
@@ -177,7 +180,7 @@ function drawBoard() {
 
     if (state.detectedDetails) {
       const detail = state.detectedDetails?.[cell.index];
-      if (detail?.needsReview && detail.type >= 0) {
+      if (detail?.needsReview && displayBoard[cell.index] >= 0) {
         ctx.beginPath();
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 3;
@@ -225,7 +228,8 @@ function buildPalette() {
 
 function updateCounts() {
   const counts = new Uint16Array(14);
-  for (const value of state.board) if (value >= 0) counts[value] += 1;
+  const displayBoard = getSolutionDisplayBoard();
+  for (const value of displayBoard) if (value >= 0) counts[value] += 1;
   const occupied = counts.reduce((n, v) => n + v, 0);
   countLine.textContent = `${occupied} / ${CELL_COUNT} board cells occupied`;
   pieceCounts.innerHTML = PIECE_IDS.map((type) => {
@@ -344,6 +348,18 @@ function countOccupied() {
   return n;
 }
 
+function getSolutionDisplayBoard() {
+  if (!state.solution?.initialBoard) return state.board;
+  const board = new Int8Array(state.solution.initialBoard);
+  const stepsApplied = Math.max(0, Math.min(state.solutionIndex, state.solution.steps.length));
+  for (let i = 0; i < stepsApplied; i++) {
+    const step = state.solution.steps[i];
+    if (step?.a >= 0) board[step.a] = -1;
+    if (step?.b >= 0) board[step.b] = -1;
+  }
+  return board;
+}
+
 async function solveCurrent() {
   if (!countOccupied()) return;
   const review = getReviewIndices();
@@ -376,7 +392,10 @@ async function solveCurrent() {
       logEvent('solve_complete', { solved: false, stats: result.stats });
       state.editing = true;
     } else {
-      state.solution = result;
+      state.solution = {
+        ...result,
+        initialBoard: new Int8Array(state.board),
+      };
       state.solutionIndex = 0;
       setStatus(`Solved in ${result.steps.length} moves · ${result.stats.elapsedMs} ms · ${result.stats.nodes.toLocaleString()} search nodes`, 'ok');
       logEvent('solve_complete', { solved: true, moves: result.steps.length, stats: result.stats });
@@ -408,16 +427,17 @@ function updateStepUI() {
     return;
   }
   const total = state.solution.steps.length;
-  const index = Math.max(0, Math.min(state.solutionIndex, total - 1));
+  const index = Math.max(0, Math.min(state.solutionIndex, total));
   state.solutionIndex = index;
-  stepLabel.textContent = `Move ${index + 1} of ${total}`;
+  stepLabel.textContent = index >= total ? 'Complete' : `Move ${index + 1} of ${total}`;
+  const initialBoard = state.solution.initialBoard || state.board;
   solutionSteps.innerHTML = state.solution.steps.map((step, i) => {
     const a = BOARD.cells[step.a];
     const b = step.b >= 0 ? BOARD.cells[step.b] : null;
-    const aName = PIECE_INFO[state.board[step.a]]?.name || 'Marble';
-    const bName = b ? (PIECE_INFO[state.board[step.b]]?.name || 'Marble') : '';
-    const aType = state.board[step.a];
-    const bType = b ? state.board[step.b] : -1;
+    const aType = initialBoard[step.a];
+    const bType = b ? initialBoard[step.b] : -1;
+    const aName = PIECE_INFO[aType]?.name || 'Marble';
+    const bName = b ? (PIECE_INFO[bType]?.name || 'Marble') : '';
     const aIcon = GAME_ICONS[aType];
     const bIcon = b ? GAME_ICONS[bType] : '';
     return `<button class="solutionRow ${i === index ? 'active' : ''}" data-index="${i}"><span>${String(i + 1).padStart(2, '0')}</span><strong><img src="${aIcon}" alt="" aria-hidden="true"><b>${aName}</b>${b ? `<span class="solutionPlus">+</span><img src="${bIcon}" alt="" aria-hidden="true"><b>${bName}</b>` : ''}</strong><em>${formatCoord(a)}${b ? ` · ${formatCoord(b)}` : ''}</em></button>`;
@@ -428,8 +448,8 @@ function updateStepUI() {
     updateStepUI();
   }));
   prevBtn.disabled = index <= 0;
-  nextBtn.disabled = index >= total - 1;
-  playBtn.disabled = false;
+  nextBtn.disabled = index >= total;
+  playBtn.disabled = index >= total;
 }
 
 function formatCoord(cell) {
@@ -442,7 +462,7 @@ prevBtn.addEventListener('click', () => {
   updateStepUI();
 });
 nextBtn.addEventListener('click', () => {
-  state.solutionIndex = Math.min(state.solution.steps.length - 1, state.solutionIndex + 1);
+  state.solutionIndex = Math.min(state.solution.steps.length, state.solutionIndex + 1);
   drawBoard();
   updateStepUI();
 });
@@ -450,11 +470,12 @@ playBtn.addEventListener('click', async () => {
   if (!state.solution || state.playing) return;
   state.playing = true;
   playBtn.textContent = 'Playing…';
-  for (let i = state.solutionIndex; i < state.solution.steps.length && state.playing; i++) {
+  const total = state.solution.steps.length;
+  for (let i = state.solutionIndex; i <= total && state.playing; i++) {
     state.solutionIndex = i;
     drawBoard();
     updateStepUI();
-    await new Promise((resolve) => setTimeout(resolve, 650));
+    if (i < total) await new Promise((resolve) => setTimeout(resolve, 650));
   }
   state.playing = false;
   playBtn.textContent = 'Play solution';
