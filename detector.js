@@ -198,17 +198,32 @@ function extractGlyphFeature(imageData, center, hexSize) {
   const std = Math.sqrt(variance / Math.max(1, count)) || 1;
 
   const feature = new Int8Array(raw.length);
-  let energy = 0;
-  for (let i = 0; i < raw.length; i++) {
-    if (!FEATURE_MASK[i]) continue;
-    const normalized = (raw[i] - mean) / std;
-    feature[i] = clamp(Math.round(normalized * FEATURE_SCALE), -127, 127);
-    energy += normalized * normalized;
+  let centralGradient = 0;
+  let centralCount = 0;
+  for (let y = 1; y < FEATURE_SIZE - 1; y++) {
+    for (let x = 1; x < FEATURE_SIZE - 1; x++) {
+      const index = y * FEATURE_SIZE + x;
+      if (!FEATURE_MASK[index]) continue;
+      const normalized = (raw[index] - mean) / std;
+      feature[index] = clamp(Math.round(normalized * FEATURE_SCALE), -127, 127);
+      const dx = (gray[index + 1] - gray[index - 1]) * 0.5;
+      const dy = (gray[index + FEATURE_SIZE] - gray[index - FEATURE_SIZE]) * 0.5;
+      const radius = Math.hypot(x - (FEATURE_SIZE - 1) / 2, y - (FEATURE_SIZE - 1) / 2);
+      if (radius < FEATURE_SIZE * 0.32) {
+        centralGradient += Math.hypot(dx, dy);
+        centralCount += 1;
+      }
+    }
   }
 
   return {
     feature,
-    occupancyScore: Math.sqrt(energy / Math.max(1, count)),
+    // Template matching deliberately normalises contrast. Occupancy cannot
+    // use that normalised variance because every cell then scores about 1.
+    // Central glyph-edge energy is stable after canonical resizing and gives
+    // a real empty-vs-marble signal, including heavily faded symbols.
+    occupancyScore: centralGradient / Math.max(1, centralCount),
+    textureRms: std,
   };
 }
 
@@ -659,6 +674,30 @@ function assignToInventory(scored) {
   });
 }
 
+function adaptiveOccupancyThreshold(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  let bestGap = -Infinity;
+  let bestIndex = -1;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const leftCount = i + 1;
+    const rightCount = sorted.length - leftCount;
+    if (leftCount < 10 || rightCount < 10) continue;
+    const lower = sorted[i];
+    const upper = sorted[i + 1];
+    if (lower < 0.8 || upper > 8.0) continue;
+    const gap = upper - lower;
+    if (gap > bestGap) {
+      bestGap = gap;
+      bestIndex = i;
+    }
+  }
+  if (bestIndex >= 0 && bestGap >= 0.45) {
+    return clamp((sorted[bestIndex] + sorted[bestIndex + 1]) * 0.5, 1.8, 3.4);
+  }
+  return 2.2;
+}
+
 function otsuThreshold(values) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -725,7 +764,9 @@ function colorFeature(imageData, center, hexSize) {
       if (rr > radius * 0.70 && rr < radius * 0.86) { ringSum += gray; ringCount++; }
     }
   }
-  if (!total) return { hist, meanGray: 0, variance: 0, ringDelta: 0, meanSat: 0 };
+  if (!total) {
+    return { hist, meanHsv: [0, 0, 0], meanGray: 0, variance: 0, ringDelta: 0, meanSat: 0 };
+  }
   for (let i = 0; i < hist.length; i++) hist[i] /= total;
   let meanSat = 0;
   for (let i = 0; i < hist.length; i++) meanSat += hist[i] * ((Math.floor(i / binsS) + 0.5) / binsH * 180);
@@ -793,10 +834,13 @@ function classifyByColor(feature, clearMode = false) {
 }
 
 function hsvMeanScore(feature, type, clearMode = false) {
-  const target = (clearMode ? CLEAR_COLOR_MEANS : ICON_COLOR_MEANS)[type];
-  const dh = Math.min(Math.abs(feature.meanHsv[0] - target[0]), 180 - Math.abs(feature.meanHsv[0] - target[0])) / 90;
-  const ds = Math.abs(feature.meanHsv[1] - target[1]) / 255;
-  const dv = Math.abs(feature.meanHsv[2] - target[2]) / 255;
+  const means = clearMode ? CLEAR_COLOR_MEANS : ICON_COLOR_MEANS;
+  const target = means[type];
+  const meanHsv = feature.meanHsv || [0, 0, 0];
+  if (!Array.isArray(target) || target.length < 3) return 0;
+  const dh = Math.min(Math.abs(meanHsv[0] - target[0]), 180 - Math.abs(meanHsv[0] - target[0])) / 90;
+  const ds = Math.abs(meanHsv[1] - target[1]) / 255;
+  const dv = Math.abs(meanHsv[2] - target[2]) / 255;
   return clamp(1 - Math.sqrt(dh * dh * 0.50 + ds * ds * 0.25 + dv * dv * 0.25), 0, 1);
 }
 
@@ -816,7 +860,8 @@ function classifyBoard(imageData, located, onProgress = null) {
     const color = colorFeature(imageData, center, located.hexSize);
     const colorResidual = localColorResidual(imageData, center, located.hexSize);
     const variants = offsets.map(([dx,dy]) => extractGlyphFeature(imageData, { x: center.x + dx, y: center.y + dy }, located.hexSize));
-    const glyphEnergy = Math.max(...variants.map(v => v.occupancyScore));
+    const glyphEnergy = Math.max(...variants.map(v => v.textureRms ?? 0));
+    const centralGlyphEdge = Math.max(...variants.map(v => v.occupancyScore ?? 0));
     const glyphScores = TYPE_NAMES.map((name) => {
       let best = -Infinity;
       for (const variant of variants) best = Math.max(best, bestTemplateScore(variant.feature, name));
@@ -880,7 +925,7 @@ function classifyBoard(imageData, located, onProgress = null) {
     const clearOccupancy = clearGlyphEnergy;
     const occupancy = clearMode
       ? (color.ringDelta + Math.sqrt(color.variance) * 0.20 + color.meanSat * 0.04)
-      : Math.max(fadedOccupancy, clearOccupancy);
+      : centralGlyphEdge;
 
     scored.push({
       index: cell.index,
@@ -890,6 +935,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       ringDelta: color.ringDelta,
       colorMeanSat: color.meanSat,
       glyphEnergy,
+      centralGlyphEdge,
       templateScore: ranked[0]?.score ?? 0,
       scores: Array.from(combined),
       glyphScores,
@@ -915,26 +961,16 @@ function classifyBoard(imageData, located, onProgress = null) {
     occupied = scored.filter((item) => blobOccupied.has(item.index));
   } else {
     const scores = scored.map((item) => item.occupancyScore);
-    const threshold = otsuThreshold(scores);
+    const threshold = adaptiveOccupancyThreshold(scores);
     occupied = scored.filter((item) => item.occupancyScore >= threshold);
 
-    // A fresh board contains exactly 55 marbles. The previous detector used a
-    // hard threshold on the *type* score, which could collapse a real board
-    // to 21/91 cells when colour confidence was low. Do not let that happen:
-    // if the image clearly has the standard starting-board population, rank
-    // all cells by the explicit two-state icon evidence and take the 55
-    // strongest candidates. This is also what lets faint/locked icons survive
-    // even when their colour contribution is weak.
-    if (occupied.length < STANDARD_TOTAL) {
-      const rankedByOccupancy = [...scored].sort((a, b) => b.occupancyScore - a.occupancyScore);
-      const present = new Set(occupied.map((item) => item.index));
-      const target = Math.min(STANDARD_TOTAL, scored.length);
-      for (const candidate of rankedByOccupancy) {
-        if (present.has(candidate.index)) continue;
-        occupied.push(candidate);
-        present.add(candidate.index);
-        if (occupied.length >= target) break;
-      }
+    // Do not fill to the starting inventory just because recognition is weak.
+    // That behaviour was creating false marbles in empty beige cells. A real
+    // starting board naturally lands on the occupied/empty gap; a mid-game
+    // screenshot keeps its actual population.
+    if (occupied.length === 0 && scored.length) {
+      const best = [...scored].sort((a, b) => b.occupancyScore - a.occupancyScore)[0];
+      if (best.occupancyScore >= 1.8) occupied = [best];
     }
     if (occupied.length > STANDARD_TOTAL) {
       occupied.sort((a, b) => b.occupancyScore - a.occupancyScore);
@@ -957,6 +993,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       candidates: item.candidates, reason: 'empty',
       occupancyScore: item.occupancyScore, ringDelta: item.ringDelta,
       colorMeanSat: item.colorMeanSat, glyphEnergy: item.glyphEnergy,
+      centralGlyphEdge: item.centralGlyphEdge ?? null,
       templateScore: item.templateScore, fadedOccupancy: item.fadedOccupancy ?? null,
       clearOccupancy: item.clearOccupancy ?? null, rawBestType: item.rawBestType,
       rawBestName: item.rawBestType >= 0 ? TYPE_NAMES[item.rawBestType] : null,
@@ -976,13 +1013,14 @@ function classifyBoard(imageData, located, onProgress = null) {
     const forcedByInventory = Boolean(item.inventoryAdjusted);
     const needsReview = forcedByInventory || (clearMode
       ? (baseScore < 0.55 || typeMargin < 0.035)
-      : (item.occupancyScore < 0.88 || baseScore < 0.86 || typeMargin < 0.006));
+      : (item.occupancyScore < 2.8 || baseScore < 0.86 || typeMargin < 0.006));
     cells[item.index] = item.type;
     details[item.index] = {
       index: item.index, x: item.x, y: item.y, type: item.type,
       confidence, candidates: item.candidates, reason: clearMode ? 'color+glyph' : 'glyph',
       similarity: item.assignedScore, typeMargin, occupancyScore: item.occupancyScore,
       ringDelta: item.ringDelta, colorMeanSat: item.colorMeanSat, glyphEnergy: item.glyphEnergy,
+      centralGlyphEdge: item.centralGlyphEdge ?? null,
       templateScore: item.templateScore, rawBestType: item.rawBestType,
       rawBestName: item.rawBestType >= 0 ? TYPE_NAMES[item.rawBestType] : null,
       forcedByInventory, needsReview,
