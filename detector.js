@@ -264,7 +264,12 @@ function bestTemplateScore(feature, name) {
 
 function bestClearGlyphScore(feature, name) {
   let best = -Infinity;
-  for (const template of (CLEAR_GLYPH_FEATURES[name] || [])) best = Math.max(best, cosine(feature, template));
+  for (const template of (CLEAR_GLYPH_FEATURES[name] || [])) {
+    const c = cosine(feature, template);
+    const s = signedShapeSimilarity(feature, template);
+    const score = 0.55 * c + 0.45 * ((s + 1) / 2);
+    best = Math.max(best, score);
+  }
   return best;
 }
 
@@ -630,29 +635,27 @@ function hungarianMin(cost) {
 }
 
 function assignToInventory(scored) {
-  // Prefer the visual classifier. Only invoke global inventory assignment when
-  // the raw result would exceed a legal per-piece maximum. This avoids the
-  // old behaviour where three visually distinct metal glyphs could be swapped
-  // simply because the Hungarian assignment found a slightly better global sum.
-  const maxCounts = Object.fromEntries(TYPE_NAMES.map((name) => [name, TEMPLATE_COUNTS[name]]));
-  const rawCounts = Object.fromEntries(TYPE_NAMES.map((name) => [name, 0]));
-  for (const item of scored) {
-    const name = TYPE_NAMES[item.rawBestType];
-    if (name) rawCounts[name] += 1;
-  }
-  // A fresh Sigmar's Garden board has an exact inventory. Do not accept
-  // a visually plausible but legal count distribution, because that lets
-  // low-contrast empty cells steal a slot from a real marble. When the
-  // standard 55-piece inventory is present, solve the full assignment.
+  // Treat the standard inventory as a set of capacity-constrained labels.
+  // For a fresh 55-piece board this becomes an exact assignment. For a
+  // mid-game screenshot it remains a max-count assignment, so we never
+  // manufacture pieces just to fill the starting inventory.
   const slots = [];
-  for (const name of TYPE_NAMES) for (let i = 0; i < TEMPLATE_COUNTS[name]; i++) slots.push(name);
+  for (const name of TYPE_NAMES) {
+    for (let i = 0; i < TEMPLATE_COUNTS[name]; i++) slots.push(name);
+  }
   const indexByName = Object.fromEntries(TYPE_NAMES.map((name, i) => [name, i]));
   const cost = scored.map((item) => slots.map((name) => -item.scores[indexByName[name]]));
   const assignment = hungarianMin(cost);
   return scored.map((item, row) => {
     const name = slots[assignment[row]];
     const index = indexByName[name];
-    return { ...item, typeName: name, type: TYPE_IDS[name], assignedScore: item.scores[index], inventoryAdjusted: item.rawBestType !== index };
+    return {
+      ...item,
+      typeName: name,
+      type: TYPE_IDS[name],
+      assignedScore: item.scores[index],
+      inventoryAdjusted: item.rawBestType !== index,
+    };
   });
 }
 
@@ -815,8 +818,11 @@ function classifyBoard(imageData, located) {
       for (const variant of variants) best = Math.max(best, bestTemplateScore(variant.feature, name));
       return best;
     });
-    const clearSaltGlyph = Math.max(...variants.map((variant) => bestClearGlyphScore(variant.feature, 'Salt')));
-    const clearMercuryGlyph = Math.max(...variants.map((variant) => bestClearGlyphScore(variant.feature, 'Mercury')));
+    // Keep separate template banks for the two visual states. The game uses
+    // the same symbols in a bright/free state and a heavily faded/locked
+    // state, so either bank can provide the occupancy evidence.
+    const clearGlyphScores = TYPE_NAMES.map((name) => Math.max(...variants.map((variant) => bestClearGlyphScore(variant.feature, name))));
+    const clearGlyphEnergy = Math.max(...clearGlyphScores);
     const colorRanked = classifyByColor(color, clearMode);
     const colorScores = colorRanked.map((entry) => entry.score);
     const colorByType = new Float32Array(TYPE_NAMES.length);
@@ -825,11 +831,13 @@ function classifyBoard(imageData, located) {
 
     const combined = TYPE_NAMES.map((_, type) => {
       if (clearMode) return 0.48 * colorByType[type] + 0.52 * meanByType[type];
-      // Faded marbles retain useful hue information even when the glyph is
-      // low-contrast. Keep glyph shape dominant, but let the local colour
-      // signature break ties and reject beige empty-cell lookalikes.
-      const colour = 0.60 * colorByType[type] + 0.40 * meanByType[type];
-      return 0.72 * glyphScores[type] + 0.28 * colour;
+
+      // The glyph itself is rendered in two useful states. Keep both template
+      // banks in the type score instead of forcing the faded bank to explain
+      // bright marbles or vice versa. Colour remains a secondary signal
+      // because the board lighting varies by position.
+      const colour = 0.55 * colorByType[type] + 0.45 * meanByType[type];
+      return 0.58 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.22 * colour;
     });
     if (!clearMode && located.hexSize >= 34) {
       const waterIndex = TYPE_NAMES.indexOf('Water');
@@ -859,9 +867,16 @@ function classifyBoard(imageData, located) {
     }
     const ranked = combined.map((score, index) => ({ score, index })).sort((a, b) => b.score - a.score);
     const topColor = colorRanked[0]?.score ?? 0;
+    // Occupancy must be independent from the type score. A faint marble can
+    // be a poor colour/type match while still being an excellent icon match.
+    // Conversely, empty beige cells can produce surprisingly plausible glyph
+    // correlations. The two-state icon banks therefore vote on occupancy
+    // first, while the type classifier runs afterwards.
+    const fadedOccupancy = Math.max(...glyphScores);
+    const clearOccupancy = clearGlyphEnergy;
     const occupancy = clearMode
       ? (color.ringDelta + Math.sqrt(color.variance) * 0.20 + color.meanSat * 0.04)
-      : Math.max(glyphScores[ranked[0]?.index ?? 0], ...glyphScores);
+      : Math.max(fadedOccupancy, clearOccupancy);
 
     scored.push({
       index: cell.index,
@@ -880,6 +895,8 @@ function classifyBoard(imageData, located) {
       rawBestScore: ranked[0]?.score ?? 0,
       rawSecondScore: ranked[1]?.score ?? -1,
       colorTopScore: topColor,
+      fadedOccupancy,
+      clearOccupancy,
       candidates: ranked.slice(0, 4).map(({ index }) => PIECE_INFO[TYPE_IDS[TYPE_NAMES[index]]].name),
     });
   }
@@ -892,21 +909,30 @@ function classifyBoard(imageData, located) {
     const blobOccupied = located.occupiedIndices ? new Set(located.occupiedIndices) : new Set();
     occupied = scored.filter((item) => blobOccupied.has(item.index));
   } else {
-    const scores = scored.map((item) => item.templateScore);
-    // The calibrated capture bank gives faded/framed boards a much cleaner
-    // occupied-vs-empty split. Keep Otsu, but avoid a low floor that can admit
-    // empty cells when the glyph bank is uncertain. If the result is only a
-    // few cells short of the standard starting inventory, fill from the next
-    // strongest candidates so faint starting marbles are not silently dropped.
-    const threshold = clamp(otsuThreshold(scores), 0.90, 0.965);
-    occupied = scored.filter((item) => item.templateScore >= threshold);
-    if (occupied.length < STANDARD_TOTAL && occupied.length >= STANDARD_TOTAL - 8) {
+    const scores = scored.map((item) => item.occupancyScore);
+    const threshold = otsuThreshold(scores);
+    occupied = scored.filter((item) => item.occupancyScore >= threshold);
+
+    // A fresh board contains exactly 55 marbles. The previous detector used a
+    // hard threshold on the *type* score, which could collapse a real board
+    // to 21/91 cells when colour confidence was low. Do not let that happen:
+    // if the image clearly has the standard starting-board population, rank
+    // all cells by the explicit two-state icon evidence and take the 55
+    // strongest candidates. This is also what lets faint/locked icons survive
+    // even when their colour contribution is weak.
+    if (occupied.length < STANDARD_TOTAL) {
+      const rankedByOccupancy = [...scored].sort((a, b) => b.occupancyScore - a.occupancyScore);
       const present = new Set(occupied.map((item) => item.index));
-      const fill = scored.filter((item) => !present.has(item.index)).sort((a,b) => b.templateScore - a.templateScore);
-      occupied = occupied.concat(fill.slice(0, STANDARD_TOTAL - occupied.length));
+      const target = Math.min(STANDARD_TOTAL, scored.length);
+      for (const candidate of rankedByOccupancy) {
+        if (present.has(candidate.index)) continue;
+        occupied.push(candidate);
+        present.add(candidate.index);
+        if (occupied.length >= target) break;
+      }
     }
     if (occupied.length > STANDARD_TOTAL) {
-      occupied.sort((a, b) => b.templateScore - a.templateScore);
+      occupied.sort((a, b) => b.occupancyScore - a.occupancyScore);
       occupied = occupied.slice(0, STANDARD_TOTAL);
     }
   }
@@ -926,7 +952,8 @@ function classifyBoard(imageData, located) {
       candidates: item.candidates, reason: 'empty',
       occupancyScore: item.occupancyScore, ringDelta: item.ringDelta,
       colorMeanSat: item.colorMeanSat, glyphEnergy: item.glyphEnergy,
-      templateScore: item.templateScore, rawBestType: item.rawBestType,
+      templateScore: item.templateScore, fadedOccupancy: item.fadedOccupancy ?? null,
+      clearOccupancy: item.clearOccupancy ?? null, rawBestType: item.rawBestType,
       rawBestName: item.rawBestType >= 0 ? TYPE_NAMES[item.rawBestType] : null,
     };
   }
@@ -944,7 +971,7 @@ function classifyBoard(imageData, located) {
     const forcedByInventory = Boolean(item.inventoryAdjusted);
     const needsReview = forcedByInventory || (clearMode
       ? (baseScore < 0.55 || typeMargin < 0.035)
-      : (baseScore < 0.90 || typeMargin < 0.006));
+      : (item.occupancyScore < 0.88 || baseScore < 0.86 || typeMargin < 0.006));
     cells[item.index] = item.type;
     details[item.index] = {
       index: item.index, x: item.x, y: item.y, type: item.type,
