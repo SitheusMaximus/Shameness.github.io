@@ -544,8 +544,10 @@ async function loadScreenshot(file) {
     worker.onmessage = (event) => {
       if (event.data?.id !== detectionId) return;
       if (event.data.progress) {
-        const { done, total } = event.data.progress;
-        detectionStatus.textContent = 'Reading marble positions and symbols… ' + done + '/' + total;
+        const { done, total, stage } = event.data.progress;
+        detectionStatus.textContent = stage === 'assigning'
+          ? 'Finishing recognition and matching inventory…'
+          : 'Reading marble positions and symbols… ' + done + '/' + total;
         return;
       }
       if (event.data.ok) {
