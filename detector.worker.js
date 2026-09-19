@@ -18,6 +18,7 @@ self.onmessage = (event) => {
       id,
       ok: false,
       error: error?.message || String(error),
+      stack: error?.stack || null,
     });
   }
 };
