@@ -548,8 +548,13 @@ async function loadScreenshot(file) {
         detectionStatus.textContent = 'Reading marble positions and symbols… ' + done + '/' + total;
         return;
       }
-      if (event.data.ok) finish(resolve, event.data.result);
-      else finish(reject, new Error(event.data.error || 'Screenshot recognition failed.'));
+      if (event.data.ok) {
+        finish(resolve, event.data.result);
+      } else {
+        const error = new Error(event.data.error || 'Screenshot recognition failed.');
+        if (event.data.stack) error.stack = event.data.stack;
+        finish(reject, error);
+      }
     };
     worker.onerror = (event) => {
       finish(reject, new Error(event.message || 'The screenshot recognition worker failed.'));
