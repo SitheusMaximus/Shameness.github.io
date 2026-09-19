@@ -754,6 +754,30 @@ function colorFeature(imageData, center, hexSize) {
   };
 }
 
+function localColorResidual(imageData, center, hexSize) {
+  const radius = Math.max(10, hexSize);
+  const innerRadius = radius * 0.55;
+  const ringMin = radius * 0.72;
+  const ringMax = radius * 0.90;
+  let innerR = 0, innerG = 0, innerB = 0, innerN = 0;
+  let ringR = 0, ringG = 0, ringB = 0, ringN = 0;
+  const { width, height, data } = imageData;
+  for (let dy = -Math.ceil(ringMax); dy <= Math.ceil(ringMax); dy++) for (let dx = -Math.ceil(ringMax); dx <= Math.ceil(ringMax); dx++) {
+    const rr = Math.hypot(dx, dy);
+    if (rr > ringMax) continue;
+    const x = Math.round(center.x + dx), y = Math.round(center.y + dy);
+    if (x < 0 || y < 0 || x >= width || y >= height) continue;
+    const i = (y * width + x) * 4, r = data[i], g = data[i + 1], b = data[i + 2];
+    if (rr < innerRadius) { innerR += r; innerG += g; innerB += b; innerN++; }
+    else if (rr >= ringMin) { ringR += r; ringG += g; ringB += b; ringN++; }
+  }
+  return [
+    innerR / Math.max(1, innerN) - ringR / Math.max(1, ringN),
+    innerG / Math.max(1, innerN) - ringG / Math.max(1, ringN),
+    innerB / Math.max(1, innerN) - ringB / Math.max(1, ringN),
+  ];
+}
+
 function histogramCorrelation(a, b) {
   let am = 0, bm = 0;
   for (let i = 0; i < a.length; i++) { am += a[i]; bm += b[i]; }
@@ -790,6 +814,7 @@ function classifyBoard(imageData, located) {
   for (const cell of BOARD.cells) {
     const center = boardPoint(located.center, located.hexSize, cell);
     const color = colorFeature(imageData, center, located.hexSize);
+    const colorResidual = localColorResidual(imageData, center, located.hexSize);
     const variants = offsets.map(([dx,dy]) => extractGlyphFeature(imageData, { x: center.x + dx, y: center.y + dy }, located.hexSize));
     const glyphEnergy = Math.max(...variants.map(v => v.occupancyScore));
     const glyphScores = TYPE_NAMES.map((name) => {
@@ -808,6 +833,18 @@ function classifyBoard(imageData, located) {
     const combined = TYPE_NAMES.map((_, type) => clearMode
       ? (0.48 * colorByType[type] + 0.52 * meanByType[type])
       : glyphScores[type]);
+    if (!clearMode && located.hexSize >= 34) {
+      const waterIndex = TYPE_NAMES.indexOf('Water');
+      const earthIndex = TYPE_NAMES.indexOf('Earth');
+      const pairGap = Math.abs(glyphScores[waterIndex] - glyphScores[earthIndex]);
+      if (pairGap < 0.011) {
+        const [, residualGreen, residualBlue] = colorResidual;
+        const waterSignal = clamp((residualBlue - 0.5 * residualGreen) / 12, -1, 1);
+        const tieBreak = 0.04 * waterSignal;
+        combined[waterIndex] += tieBreak;
+        combined[earthIndex] -= tieBreak;
+      }
+    }
     if (clearMode) {
       const colorTop = colorRanked[0]?.type ?? -1;
       const saltIndex = TYPE_NAMES.indexOf('Salt'), mercuryIndex = TYPE_NAMES.indexOf('Mercury');
