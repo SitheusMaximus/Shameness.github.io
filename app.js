@@ -460,6 +460,30 @@ playBtn.addEventListener('click', async () => {
   playBtn.textContent = 'Play solution';
 });
 
+async function decodeScreenshotFile(file) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(file);
+    } catch {
+      // Fall through to the HTMLImageElement path. Some browsers expose
+      // createImageBitmap but reject screenshots from particular file types.
+    }
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('The selected image could not be decoded by the browser.'));
+      element.src = url;
+    });
+    return image;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function loadScreenshot(file) {
   // Each screenshot starts a fresh detection transaction. Never leave a prior
   // successful interpretation armed if the new image fails to parse.
@@ -468,7 +492,7 @@ async function loadScreenshot(file) {
   state.detectionTrusted = false;
   useDetectionBtn.disabled = true;
   trustSolveBtn.disabled = true;
-  const image = await createImageBitmap(file);
+  const image = await decodeScreenshotFile(file);
   const maxW = 4096;
   const scale = Math.min(1, maxW / image.width);
   screenshotCanvas.width = Math.round(image.width * scale);
@@ -476,6 +500,7 @@ async function loadScreenshot(file) {
   screenshotCtx.clearRect(0, 0, screenshotCanvas.width, screenshotCanvas.height);
   screenshotCtx.drawImage(image, 0, 0, screenshotCanvas.width, screenshotCanvas.height);
   const imageData = screenshotCtx.getImageData(0, 0, screenshotCanvas.width, screenshotCanvas.height);
+  if (typeof image.close === 'function') image.close();
   logEvent('screenshot_loaded', { width: imageData.width, height: imageData.height, fileType: file.type || 'image' });
   detectionStatus.textContent = 'Finding the hex board…';
   document.getElementById('detectModal').classList.add('open');
@@ -536,7 +561,20 @@ function drawDetectionOverlay() {
 
 screenshotInput.addEventListener('change', () => {
   const file = screenshotInput.files?.[0];
-  if (file) loadScreenshot(file).catch((e) => { detectionStatus.textContent = e.message; });
+  // Reset the input so selecting the same screenshot twice still fires change.
+  screenshotInput.value = '';
+  if (!file) return;
+  loadScreenshot(file).catch((error) => {
+    console.error('Sigmar screenshot import failed:', error);
+    logEvent('screenshot_error', { message: error?.message || String(error) });
+    document.getElementById('detectModal').classList.add('open');
+    detectionStatus.innerHTML = '<strong>Screenshot import failed.</strong><br>' +
+      (error?.message || 'The image could not be processed.') +
+      '<br><span class="muted">Open Diagnostics for the recorded error.</span>';
+    useDetectionBtn.disabled = true;
+    trustSolveBtn.disabled = true;
+    setStatus('Screenshot import failed. See the detection window or Diagnostics.', 'error');
+  });
 });
 screenshotBtn.addEventListener('click', () => screenshotInput.click());
 pasteBtn.addEventListener('click', async () => {
@@ -546,7 +584,18 @@ pasteBtn.addEventListener('click', async () => {
       const type = item.types.find((t) => t.startsWith('image/'));
       if (type) {
         const blob = await item.getType(type);
-        await loadScreenshot(blob);
+        try {
+          await loadScreenshot(blob);
+        } catch (error) {
+          console.error('Sigmar pasted screenshot import failed:', error);
+          logEvent('screenshot_error', { message: error?.message || String(error) });
+          document.getElementById('detectModal').classList.add('open');
+          detectionStatus.innerHTML = '<strong>Screenshot import failed.</strong><br>' +
+            (error?.message || 'The image could not be processed.');
+          useDetectionBtn.disabled = true;
+          trustSolveBtn.disabled = true;
+          setStatus('Screenshot import failed. See the detection window or Diagnostics.', 'error');
+        }
         return;
       }
     }
