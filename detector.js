@@ -1007,6 +1007,7 @@ function classifyBoard(imageData, located, onProgress = null) {
     const color = colorFeature(imageData, center, located.hexSize);
     const colorResidual = localColorResidual(imageData, center, located.hexSize);
     const variants = offsets.map(([dx,dy]) => extractGlyphFeature(imageData, { x: center.x + dx, y: center.y + dy }, located.hexSize));
+    const iconVariants = offsets.map(([dx,dy]) => extractGlyphFeature(imageData, { x: center.x + dx, y: center.y + dy }, located.hexSize, 0.96));
     const glyphEnergy = Math.max(...variants.map(v => v.textureRms ?? 0));
     const centralGlyphEdge = Math.max(...variants.map(v => v.occupancyScore ?? 0));
     const glyphScores = TYPE_NAMES.map((name) => {
@@ -1028,7 +1029,7 @@ function classifyBoard(imageData, located, onProgress = null) {
     const paletteScores = palettePrototypes
       ? palettePrototypes.map((prototype) => {
           if (!prototype) return 0;
-          return Math.max(...variants.map((variant) => screenshotPaletteScore(variant.feature, prototype)));
+          return Math.max(...iconVariants.map((variant) => screenshotPaletteScore(variant.feature, prototype)));
         })
       : null;
     const combined = TYPE_NAMES.map((_, type) => {
