@@ -1,5 +1,5 @@
 import { BOARD, CELL_COUNT, PIECES, PIECE_INFO, ELEMENTS, solve, validateBoard, computeFreeMask } from './solver.js';
-import { locateBoard, classifyBoard, boardPoint } from './detector.js';
+import { locateBoard, classifyBoard, boardPoint } from './detector.js?v=20260920-8';
 import { GAME_ICONS } from './game-icons.js';
 import { logEvent, clearDiagnostics, copyDiagnostics, downloadDiagnostics, diagnosticsJSON } from './diagnostics.js';
 
@@ -551,7 +551,7 @@ async function loadScreenshot(file) {
   const detectionId = Date.now();
   const detected = await new Promise((resolve, reject) => {
     let settled = false;
-    const worker = new Worker('./detector.worker.js?v=20260920-6', { type: 'module' });
+    const worker = new Worker('./detector.worker.js?v=20260920-8', { type: 'module' });
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
