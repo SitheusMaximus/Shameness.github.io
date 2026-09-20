@@ -1082,9 +1082,12 @@ function classifyBoard(imageData, located, onProgress = null) {
         return 0.82 * paletteScores[type] + 0.12 * glyphScores[type] + 0.06 * colour;
       }
 
-      // Mors/Vitae have no palette icon. They remain generic candidates, but
-      // on a complete 55-piece board the inventory assignment below constrains
-      // them to their actual four-piece capacities.
+      // Mors/Vitae have no selectable palette icon. Their visual distinction
+      // is primarily the marble colour/brightness, so use the calibrated
+      // colour references much more strongly for those two types.
+      if (type >= 12) {
+        return 0.62 * colorByType[type] + 0.28 * meanByType[type] + 0.10 * glyphScores[type];
+      }
       return 0.68 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.12 * colour;
     });
     if (clearMode) {
@@ -1230,7 +1233,11 @@ function classifyBoard(imageData, located, onProgress = null) {
     const inventoryPenalty = forcedByInventory
       ? Math.max(0, item.rawBestScore - item.assignedScore)
       : 0;
-    const needsReview = inventoryConflict || (forcedByInventory && inventoryPenalty > 0.06) || (clearMode
+    // A raw type exceeding its inventory is not itself an error. On a
+    // complete board the capacity-constrained assignment is expected to
+    // override duplicate raw guesses. Review only when that override actually
+    // costs a meaningful amount of recognition score.
+    const needsReview = (forcedByInventory && inventoryPenalty > 0.08) || (clearMode
       ? (baseScore < 0.55 || typeMargin < 0.035)
       : (item.occupancyScore < 2.8 || baseScore < 0.86 || typeMargin < 0.010));
     cells[item.index] = item.type;
@@ -1258,6 +1265,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       candidates: scored.length, occupiedCandidates: occupied.length,
       mode: clearMode ? 'bright-crop' : (palettePrototypes ? 'palette-template' : 'faded-board'),
       reviewedCells: reviewIndices.length, forcedByInventory: assigned.filter((item) => item.inventoryAdjusted).length, inventoryConflicts: reviewIndices.filter((index) => details[index]?.inventoryConflict).length,
+      rawTypeCounts: Object.fromEntries(TYPE_NAMES.map((name, type) => [name, occupied.filter((item) => item.rawBestType === type).length])),
     },
     summary: `${assigned.length}/${CELL_COUNT} cells detected${reviewIndices.length ? `, ${reviewIndices.length} need review` : ''}`,
   };
