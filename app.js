@@ -551,7 +551,7 @@ async function loadScreenshot(file) {
   const detectionId = Date.now();
   const detected = await new Promise((resolve, reject) => {
     let settled = false;
-    const worker = new Worker('./detector.worker.js?v=20260919-16', { type: 'module' });
+    const worker = new Worker('./detector.worker.js?v=20260920-1', { type: 'module' });
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
