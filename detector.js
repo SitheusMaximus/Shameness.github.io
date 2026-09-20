@@ -977,16 +977,20 @@ function buildScreenshotPalette(imageData, located) {
   // learned "Mors/Vitae" from nonsense. Use the fixed game layout ratios
   // relative to the detected board frame instead.
   const { x, y, width, height } = located.bbox;
-  const startX = x + width * 0.188;
-  const spacing = width * 0.0525;
-  const metalStartX = x + width * 0.493;
+  // These are the actual icon centres in the desktop game's bottom bar,
+  // measured as fractions of the detected board frame. The first group is
+  // not uniformly spaced because the separator/dot layout is asymmetric.
+  // Using one guessed spacing was enough to move every template after Salt
+  // onto the wrong part of the bar.
+  const paletteXFractions = [
+    0.187, 0.254, 0.309, 0.362, 0.416,
+    0.492, 0.560, 0.609, 0.660, 0.710, 0.766, 0.812,
+  ];
   const centerY = y + height + located.hexSize * 1.17;
   const palette = new Array(12).fill(null);
 
   for (let i = 0; i < 12; i++) {
-    const expectedX = i < 5
-      ? startX + spacing * i
-      : metalStartX + spacing * (i - 5);
+    const expectedX = x + width * paletteXFractions[i];
     // The layout ratios above are tied to the detected game frame, so use
     // the geometric centre directly. Do not chase local contrast: the icon
     // itself contains bright/dark edges that can pull a contrast search away
