@@ -738,3 +738,4 @@ refreshDiagnosticsPanel();
 resizeCanvas();
 
 window.__SIGMAR__ = { state, BOARD, PIECES, solve, validateBoard, locateBoard, classifyBoard, boardPoint };
+window.dispatchEvent(new Event('sigmar:ready'));
