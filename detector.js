@@ -999,11 +999,25 @@ function buildScreenshotPalette(imageData, located) {
   return palette;
 }
 
-function screenshotPaletteScore(feature, prototype) {
+function screenshotPaletteColorScore(feature, prototype) {
+  if (!feature || !prototype) return 0;
+  const hist = histogramCorrelation(feature.hist, prototype.hist);
+  const a = Array.isArray(feature.meanHsv) ? feature.meanHsv : [0, 0, 0];
+  const b = Array.isArray(prototype.meanHsv) ? prototype.meanHsv : [0, 0, 0];
+  const dh = Math.min(Math.abs(a[0] - b[0]), 180 - Math.abs(a[0] - b[0])) / 90;
+  const ds = Math.abs(a[1] - b[1]) / 255;
+  const dv = Math.abs(a[2] - b[2]) / 255;
+  const mean = clamp(1 - Math.sqrt(dh * dh * 0.50 + ds * ds * 0.30 + dv * dv * 0.20), 0, 1);
+  return 0.55 * clamp((hist + 1) / 2, 0, 1) + 0.45 * mean;
+}
+
+function screenshotPaletteScore(feature, prototype, colorFeatureValue = null) {
   if (!feature || !prototype) return 0;
   const c = cosine(feature, prototype);
   const s = signedShapeSimilarity(feature, prototype);
-  return 0.65 * c + 0.35 * ((s + 1) / 2);
+  const glyph = 0.65 * c + 0.35 * ((s + 1) / 2);
+  const colour = colorFeatureValue ? screenshotPaletteColorScore(colorFeatureValue, prototype.color) : 0;
+  return colorFeatureValue ? 0.58 * glyph + 0.42 * colour : glyph;
 }
 
 function classifyBoard(imageData, located, onProgress = null) {
@@ -1012,6 +1026,7 @@ function classifyBoard(imageData, located, onProgress = null) {
   const clearMode = located.source === 'blob-grid';
   const screenshotPalette = buildScreenshotPalette(imageData, located);
   const palettePrototypes = screenshotPalette ? screenshotPalette.map((entry) => entry?.feature ?? null) : null;
+  const paletteColorPrototypes = screenshotPalette ? screenshotPalette.map((entry) => entry?.color ?? null) : null;
   const scored = [];
   // Keep a small positional search around the located centre. The old 17-point
   // search multiplied the most expensive part of recognition enough to lock
@@ -1044,25 +1059,28 @@ function classifyBoard(imageData, located, onProgress = null) {
     const meanByType = TYPE_NAMES.map((_, type) => hsvMeanScore(color, type, clearMode));
 
     const paletteScores = palettePrototypes
-      ? palettePrototypes.map((prototype) => {
+      ? palettePrototypes.map((prototype, type) => {
           if (!prototype) return 0;
-          return Math.max(...iconVariants.map((variant) => screenshotPaletteScore(variant.feature, prototype)));
+          const colorPrototype = paletteColorPrototypes?.[type] ?? null;
+          return Math.max(...iconVariants.map((variant) =>
+            screenshotPaletteScore(variant.feature, prototype, colorPrototype ? color : null)
+          ));
         })
       : null;
     const combined = TYPE_NAMES.map((_, type) => {
       if (clearMode) return 0.48 * colorByType[type] + 0.52 * meanByType[type];
       const colour = 0.55 * colorByType[type] + 0.45 * meanByType[type];
 
-      // For the twelve symbols that actually appear in the screenshot,
-      // prefer the screenshot's own palette glyph over the generic training
-      // templates. This makes scale, antialiasing, and the current UI theme
-      // part of the reference instead of pretending every capture is identical.
       if (paletteScores && type < 12 && paletteScores[type] > 0) {
-        return 0.74 * paletteScores[type] + 0.18 * glyphScores[type] + 0.08 * colour;
+        // The screenshot's own palette supplies both symbol shape and colour.
+        // The colour term is especially important for faded marbles, whose
+        // glyph is often much weaker than the palette glyph.
+        return 0.82 * paletteScores[type] + 0.12 * glyphScores[type] + 0.06 * colour;
       }
 
-      // Mors and Vitae have no palette icon. Keep their dedicated generic
-      // glyph templates, with colour only as a secondary signal.
+      // Mors/Vitae have no palette icon. They remain generic candidates, but
+      // on a complete 55-piece board the inventory assignment below constrains
+      // them to their actual four-piece capacities.
       return 0.68 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.12 * colour;
     });
     if (clearMode) {
@@ -1164,13 +1182,15 @@ function classifyBoard(imageData, located, onProgress = null) {
   // only compounds the error.
   if (!clearMode && !palettePrototypes) applyAdaptivePrototypes(occupied);
 
-  const assigned = occupied.map((item) => ({
-    ...item,
-    typeName: TYPE_NAMES[item.rawBestType],
-    type: TYPE_IDS[TYPE_NAMES[item.rawBestType]],
-    assignedScore: item.rawBestScore,
-    inventoryAdjusted: false,
-  }));
+  const assigned = (!clearMode && occupied.length === STANDARD_TOTAL)
+    ? assignToInventory(occupied)
+    : occupied.map((item) => ({
+        ...item,
+        typeName: TYPE_NAMES[item.rawBestType],
+        type: TYPE_IDS[TYPE_NAMES[item.rawBestType]],
+        assignedScore: item.rawBestScore,
+        inventoryAdjusted: false,
+      }));
   const cells = new Int8Array(CELL_COUNT); cells.fill(-1);
   const details = Array.from({ length: CELL_COUNT }, () => null);
   const occupiedSet = new Set(occupied.map((item) => item.index));
@@ -1202,9 +1222,11 @@ function classifyBoard(imageData, located, onProgress = null) {
     const inventoryLimit = TEMPLATE_COUNTS[item.typeName] ?? 0;
     const rawCountForType = occupied.reduce((n, other) => n + (other.rawBestType === item.rawBestType ? 1 : 0), 0);
     const inventoryConflict = !clearMode && rawCountForType > inventoryLimit;
-    const forcedByInventory = false;
-    const inventoryPenalty = 0;
-    const needsReview = inventoryConflict || (clearMode
+    const forcedByInventory = Boolean(item.inventoryAdjusted);
+    const inventoryPenalty = forcedByInventory
+      ? Math.max(0, item.rawBestScore - item.assignedScore)
+      : 0;
+    const needsReview = inventoryConflict || (forcedByInventory && inventoryPenalty > 0.06) || (clearMode
       ? (baseScore < 0.55 || typeMargin < 0.035)
       : (item.occupancyScore < 2.8 || baseScore < 0.86 || typeMargin < 0.010));
     cells[item.index] = item.type;
