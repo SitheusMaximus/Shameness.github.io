@@ -967,15 +967,35 @@ function localPaletteCenter(imageData, x, y, radius = 8) {
 
 function buildScreenshotPalette(imageData, located) {
   if (!located?.bbox || located.source === 'blob-grid') return null;
+
+  // The desktop game has twelve selectable symbols in the bottom bar:
+  // Salt, Air, Fire, Water, Earth, Mercury, Lead, Tin, Iron, Copper,
+  // Silver, Gold. Mors/Vitae are intentionally not in this palette.
+  //
+  // Earlier versions guessed this row from the board width incorrectly. That
+  // put the templates over the empty game area, so the classifier effectively
+  // learned "Mors/Vitae" from nonsense. Use the fixed game layout ratios
+  // relative to the detected board frame instead.
   const { x, y, width, height } = located.bbox;
-  const startX = x + width * 0.335;
-  const spacing = width * 0.0477;
-  const metalStartX = startX + spacing * 4 + width * 0.067;
-  const centerY = y + height + located.hexSize * 1.13;
-  const palette = new Array(11).fill(null);
-  for (let i = 0; i < 11; i++) {
-    const expectedX = i < 5 ? startX + spacing * i : metalStartX + spacing * (i - 5);
-    const center = localPaletteCenter(imageData, expectedX, centerY, Math.max(5, Math.round(located.hexSize * 0.24)));
+  const startX = x + width * 0.188;
+  const spacing = width * 0.0525;
+  const metalStartX = x + width * 0.493;
+  const centerY = y + height + located.hexSize * 1.17;
+  const palette = new Array(12).fill(null);
+
+  for (let i = 0; i < 12; i++) {
+    const expectedX = i < 5
+      ? startX + spacing * i
+      : metalStartX + spacing * (i - 5);
+    // Only allow a very small recentering window. A large search can jump
+    // from an icon onto the separator/background and silently poison all
+    // screenshot-local templates.
+    const center = localPaletteCenter(
+      imageData,
+      expectedX,
+      centerY,
+      Math.max(2, Math.round(located.hexSize * 0.08)),
+    );
     const feature = extractGlyphFeature(imageData, center, located.hexSize, 0.96);
     const color = colorFeature(imageData, center, Math.max(10, located.hexSize * 0.48));
     palette[i] = { center, feature: feature.feature, color };
@@ -1036,10 +1056,18 @@ function classifyBoard(imageData, located, onProgress = null) {
     const combined = TYPE_NAMES.map((_, type) => {
       if (clearMode) return 0.48 * colorByType[type] + 0.52 * meanByType[type];
       const colour = 0.55 * colorByType[type] + 0.45 * meanByType[type];
-      if (paletteScores && type < 11 && paletteScores[type] > 0) {
-        return 0.68 * paletteScores[type] + 0.20 * glyphScores[type] + 0.12 * colour;
+
+      // For the twelve symbols that actually appear in the screenshot,
+      // prefer the screenshot's own palette glyph over the generic training
+      // templates. This makes scale, antialiasing, and the current UI theme
+      // part of the reference instead of pretending every capture is identical.
+      if (paletteScores && type < 12 && paletteScores[type] > 0) {
+        return 0.74 * paletteScores[type] + 0.18 * glyphScores[type] + 0.08 * colour;
       }
-      return 0.62 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.18 * colour;
+
+      // Mors and Vitae have no palette icon. Keep their dedicated generic
+      // glyph templates, with colour only as a secondary signal.
+      return 0.68 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.12 * colour;
     });
     if (clearMode) {
       const colorTop = colorRanked[0]?.type ?? -1;
@@ -1134,7 +1162,11 @@ function classifyBoard(imageData, located, onProgress = null) {
 
   if (occupied.length > STANDARD_TOTAL) { occupied.sort((a, b) => b.templateScore - a.templateScore); occupied = occupied.slice(0, STANDARD_TOTAL); }
 
-  if (!clearMode) applyAdaptivePrototypes(occupied);
+  // Do not run adaptive self-training when screenshot-local palette
+  // templates are available. The palette is a direct observation from this
+  // exact capture, so propagating an early misclassification into a prototype
+  // only compounds the error.
+  if (!clearMode && !palettePrototypes) applyAdaptivePrototypes(occupied);
 
   const assigned = occupied.map((item) => ({
     ...item,
@@ -1201,7 +1233,8 @@ function classifyBoard(imageData, located, onProgress = null) {
     ambiguous: reviewIndices.length, reviewIndices, threshold: clearMode ? null : clamp(otsuThreshold(scored.map((item) => item.templateScore)), 0.72, 0.965),
     counts,
     stats: {
-      candidates: scored.length, occupiedCandidates: occupied.length, mode: clearMode ? 'bright-crop' : 'faded-board',
+      candidates: scored.length, occupiedCandidates: occupied.length,
+      mode: clearMode ? 'bright-crop' : (palettePrototypes ? 'palette-template' : 'faded-board'),
       reviewedCells: reviewIndices.length, forcedByInventory: assigned.filter((item) => item.inventoryAdjusted).length, inventoryConflicts: reviewIndices.filter((index) => details[index]?.inventoryConflict).length,
     },
     summary: `${assigned.length}/${CELL_COUNT} cells detected${reviewIndices.length ? `, ${reviewIndices.length} need review` : ''}`,
