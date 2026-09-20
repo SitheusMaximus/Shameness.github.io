@@ -986,16 +986,19 @@ function buildScreenshotPalette(imageData, located) {
     0.187, 0.254, 0.309, 0.362, 0.416,
     0.492, 0.560, 0.609, 0.660, 0.710, 0.766, 0.812,
   ];
-  const centerY = y + height + located.hexSize * 1.17;
+  // In the supplied capture the icon centres are about 40 px below the
+  // detected board frame, not 44 px. The old 1.17 factor sampled the lower
+  // half of every icon and therefore produced garbage palette prototypes.
+  const centerY = y + height + located.hexSize * 1.055;
   const palette = new Array(12).fill(null);
 
   for (let i = 0; i < 12; i++) {
     const expectedX = x + width * paletteXFractions[i];
-    // The layout ratios above are tied to the detected game frame, so use
-    // the geometric centre directly. Do not chase local contrast: the icon
-    // itself contains bright/dark edges that can pull a contrast search away
-    // from the glyph centre.
-    const center = { x: expectedX, y: centerY };
+    // Recenter inside a small window. This absorbs screenshot scaling and
+    // rounding without allowing the search to jump onto the count labels or
+    // separator.
+    const centered = localPaletteCenter(imageData, expectedX, centerY, 5);
+    const center = { x: centered.x, y: centered.y };
     const feature = extractGlyphFeature(imageData, center, located.hexSize, 0.96);
     const color = colorFeature(imageData, center, Math.max(10, located.hexSize * 0.48));
     palette[i] = { center, feature: feature.feature, color };
@@ -1062,13 +1065,22 @@ function classifyBoard(imageData, located, onProgress = null) {
     for (const entry of colorRanked) colorByType[entry.type] = entry.score;
     const meanByType = TYPE_NAMES.map((_, type) => hsvMeanScore(color, type, clearMode));
 
+    const paletteBestFeatures = palettePrototypes ? new Array(TYPE_NAMES.length).fill(null) : null;
     const paletteScores = palettePrototypes
       ? palettePrototypes.map((prototype, type) => {
           if (!prototype) return 0;
           const colorPrototype = paletteColorPrototypes?.[type] ?? null;
-          return Math.max(...iconVariants.map((variant) =>
-            screenshotPaletteScore(variant.feature, prototype, colorPrototype ? color : null)
-          ));
+          let best = -Infinity;
+          let bestFeature = null;
+          for (const variant of iconVariants) {
+            const score = screenshotPaletteScore(variant.feature, prototype, colorPrototype ? color : null);
+            if (score > best) {
+              best = score;
+              bestFeature = variant.feature;
+            }
+          }
+          paletteBestFeatures[type] = bestFeature;
+          return Number.isFinite(best) ? best : 0;
         })
       : null;
     const combined = TYPE_NAMES.map((_, type) => {
@@ -1086,7 +1098,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       // is primarily the marble colour/brightness, so use the calibrated
       // colour references much more strongly for those two types.
       if (type >= 12) {
-        return 0.62 * colorByType[type] + 0.28 * meanByType[type] + 0.10 * glyphScores[type];
+        return 0.72 * glyphScores[type] + 0.18 * colorByType[type] + 0.10 * meanByType[type];
       }
       return 0.68 * glyphScores[type] + 0.20 * clearGlyphScores[type] + 0.12 * colour;
     });
@@ -1142,6 +1154,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       prototypeFeature,
       colorScores,
       paletteScores,
+      paletteBestFeatures,
       meanScores: meanByType,
       rawBestType: ranked[0]?.index ?? -1,
       rawBestScore: ranked[0]?.score ?? 0,
@@ -1152,6 +1165,48 @@ function classifyBoard(imageData, located, onProgress = null) {
       candidates: ranked.slice(0, 4).map(({ index }) => PIECE_INFO[TYPE_IDS[TYPE_NAMES[index]]].name),
     });
     if (onProgress) onProgress(scored.length, BOARD.cells.length, 'reading');
+  }
+
+  // Learn the board's actual faded/lighting appearance from high-confidence
+  // palette matches. This is the useful part of the other Sigmar solvers'
+  // "train on both free and closed marbles" approach, adapted to a static
+  // screenshot: the palette supplies the label, while the board supplies the
+  // in-situ visual appearance.
+  if (!clearMode && palettePrototypes) {
+    const contextPrototypes = new Array(TYPE_NAMES.length).fill(null);
+    for (let type = 0; type < 12; type++) {
+      const seeds = scored
+        .filter((item) => item.paletteScores?.[type] >= 0.62 && item.paletteBestFeatures?.[type])
+        .map((item) => {
+          const ranked = (item.paletteScores || []).map((score, index) => ({ score, index }))
+            .sort((a, b) => b.score - a.score);
+          const margin = ranked[0]?.score - (ranked[1]?.score ?? 0);
+          return { item, margin };
+        })
+        .filter((entry) => entry.margin >= 0.025)
+        .sort((a, b) => b.item.paletteScores[type] - a.item.paletteScores[type])
+        .slice(0, 3);
+      if (seeds.length) contextPrototypes[type] = seeds[0].item.paletteBestFeatures[type];
+    }
+
+    for (const item of scored) {
+      if (!item.paletteScores) continue;
+      for (let type = 0; type < 12; type++) {
+        const prototype = contextPrototypes[type];
+        if (!prototype || !item.paletteBestFeatures?.[type]) continue;
+        const context = adaptivePrototypeScore(item.paletteBestFeatures[type], prototype);
+        // Keep the screenshot-local palette as the label anchor, but let the
+        // board-state example teach the classifier what a faded marble looks
+        // like in the actual screenshot.
+        item.scores[type] = 0.55 * item.scores[type] + 0.45 * context;
+      }
+      const ranked = item.scores.map((score, index) => ({ score, index }))
+        .sort((a, b) => b.score - a.score);
+      item.rawBestType = ranked[0]?.index ?? -1;
+      item.rawBestScore = ranked[0]?.score ?? 0;
+      item.rawSecondScore = ranked[1]?.score ?? -1;
+      item.candidates = ranked.slice(0, 4).map(({ index }) => PIECE_INFO[TYPE_IDS[TYPE_NAMES[index]]].name);
+    }
   }
 
   if (onProgress) onProgress(scored.length, BOARD.cells.length, 'assigning');
@@ -1266,6 +1321,7 @@ function classifyBoard(imageData, located, onProgress = null) {
       mode: clearMode ? 'bright-crop' : (palettePrototypes ? 'palette-template' : 'faded-board'),
       reviewedCells: reviewIndices.length, forcedByInventory: assigned.filter((item) => item.inventoryAdjusted).length, inventoryConflicts: reviewIndices.filter((index) => details[index]?.inventoryConflict).length,
       rawTypeCounts: Object.fromEntries(TYPE_NAMES.map((name, type) => [name, occupied.filter((item) => item.rawBestType === type).length])),
+      paletteCenters: screenshotPalette ? screenshotPalette.map((entry) => entry?.center ?? null) : null,
     },
     summary: `${assigned.length}/${CELL_COUNT} cells detected${reviewIndices.length ? `, ${reviewIndices.length} need review` : ''}`,
   };
