@@ -987,15 +987,11 @@ function buildScreenshotPalette(imageData, located) {
     const expectedX = i < 5
       ? startX + spacing * i
       : metalStartX + spacing * (i - 5);
-    // Only allow a very small recentering window. A large search can jump
-    // from an icon onto the separator/background and silently poison all
-    // screenshot-local templates.
-    const center = localPaletteCenter(
-      imageData,
-      expectedX,
-      centerY,
-      Math.max(2, Math.round(located.hexSize * 0.08)),
-    );
+    // The layout ratios above are tied to the detected game frame, so use
+    // the geometric centre directly. Do not chase local contrast: the icon
+    // itself contains bright/dark edges that can pull a contrast search away
+    // from the glyph centre.
+    const center = { x: expectedX, y: centerY };
     const feature = extractGlyphFeature(imageData, center, located.hexSize, 0.96);
     const color = colorFeature(imageData, center, Math.max(10, located.hexSize * 0.48));
     palette[i] = { center, feature: feature.feature, color };
